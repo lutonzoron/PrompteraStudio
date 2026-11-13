@@ -1,5 +1,6 @@
 import React from "react";
 import BrandLogo from "./BrandLogo.jsx";
+import { useT } from "../i18n/index.jsx";
 
 export default function Shell({
   children,
@@ -14,6 +15,7 @@ export default function Shell({
   onComfyStart,
   inboxPending = 0,
 }) {
+  const t = useT();
   const comfyOn = !!health?.comfy?.online;
   const llmOn = !!health?.onboarding?.steps?.llm?.done;
 
@@ -29,21 +31,21 @@ export default function Shell({
             className={activeNav === "studio" ? "active" : ""}
             onClick={onHome}
           >
-            Studio
+            {t("nav.studio")}
           </button>
           <button
             type="button"
             className={activeNav === "styles" ? "active" : ""}
             onClick={onOpenStyles}
           >
-            Estilos
+            {t("nav.styles")}
           </button>
           <button type="button" onClick={onOpenInbox}>
-            Inbox
+            {t("nav.inbox")}
             {inboxPending > 0 ? <span className="badge warn">{inboxPending}</span> : null}
           </button>
           <button type="button" onClick={onOpenSettings}>
-            Config
+            {t("nav.settings")}
             {!health?.onboarding?.complete ? <span className="badge warn">!</span> : null}
           </button>
         </nav>
@@ -55,21 +57,21 @@ export default function Shell({
             </span>
             <span>
               <i className={`dot ${llmOn ? "on" : "off"}`} />
-              IA
+              AI
             </span>
           </div>
           {pendingReviews > 0 ? (
-            <span className="badge warn" title="Takes aguardando revisão">
+            <span className="badge warn" title={t("nav.reviewsWaiting")}>
               {pendingReviews} review
             </span>
           ) : null}
           {!comfyOn ? (
             <button type="button" onClick={onComfyStart}>
-              Iniciar Comfy
+              {t("nav.startComfy")}
             </button>
           ) : null}
           <button type="button" className="primary" onClick={onCreate}>
-            Nova história
+            {t("nav.newStory")}
           </button>
         </div>
       </header>

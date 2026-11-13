@@ -11,6 +11,7 @@ import Settings from "./components/Settings.jsx";
 import StyleGallery from "./components/StyleGallery.jsx";
 import InboxSheet from "./components/InboxSheet.jsx";
 import { ConfirmProvider } from "./components/ConfirmDialog.jsx";
+import { useT } from "./i18n/index.jsx";
 
 function readHashProjectId() {
   const m = String(window.location.hash || "").match(/^#\/p\/([^/]+)/);
@@ -18,6 +19,7 @@ function readHashProjectId() {
 }
 
 export default function App() {
+  const t = useT();
   const [health, setHealth] = useState(null);
   const [queue, setQueue] = useState(null);
   const [projects, setProjects] = useState([]);
@@ -90,8 +92,8 @@ export default function App() {
 
   useEffect(() => {
     refresh();
-    const t = setInterval(refresh, 8000);
-    return () => clearInterval(t);
+    const tick = setInterval(refresh, 8000);
+    return () => clearInterval(tick);
   }, [refresh]);
 
   useEffect(() => {
@@ -99,8 +101,8 @@ export default function App() {
       setProject(null);
       return;
     }
-    api.project(selectedId).then(setProject).catch(() => setToast("Projeto não encontrado"));
-  }, [selectedId]);
+    api.project(selectedId).then(setProject).catch(() => setToast(t("app.projectMissing")));
+  }, [selectedId, t]);
 
   useEffect(() => {
     const onHash = () => {
@@ -126,8 +128,15 @@ export default function App() {
         if (data.type === "review_needed") {
           setReview(data);
           beep();
-          notify("Revisão de take", `Take ${data.take}/${data.total} — ${data.title || ""}`);
-          setToast(`Take ${data.take} aguardando`);
+          notify(
+            t("review.notifyTitle"),
+            t("review.notifyBody", {
+              take: data.take,
+              total: data.total,
+              title: data.title || "",
+            })
+          );
+          setToast(t("review.waitingToast", { take: data.take }));
           refresh();
         }
         if (
@@ -146,17 +155,17 @@ export default function App() {
         ) {
           refresh();
           if (data.type === "job_done") {
-            setToast("Geração concluída — abra o projeto para ver o master");
+            setToast(t("app.jobDone"));
             if (data.project_id) openProject(data.project_id);
           }
-          if (data.type === "job_failed") setToast(`Falhou: ${data.error}`);
+          if (data.type === "job_failed") setToast(t("app.jobFailed", { error: data.error }));
           if (data.type === "inbox_imported")
-            setToast(`História aprovada: ${data.title || ""}`);
+            setToast(t("inbox.approved", { title: data.title || "" }));
           if (data.type === "inbox_pending") {
             const n = data.count || (data.names || []).length;
-            setToast(n ? `Inbox: ${n} pack(s) aguardando aprovação` : "Inbox atualizado");
+            setToast(n ? t("inbox.pendingToast", { n }) : t("inbox.updated"));
             beep();
-            notify("Inbox Promptera", `${n} pack(s) para aprovar`);
+            notify(t("inbox.notifyTitle"), t("inbox.notifyBody", { n }));
             api.inbox().then(setInbox).catch(() => {});
           }
           if (data.type === "inbox_changed" || data.type === "inbox_rejected") {
@@ -177,12 +186,12 @@ export default function App() {
       } catch {}
     };
     return () => es.close();
-  }, [refresh, openProject, selectedId]);
+  }, [refresh, openProject, selectedId, t]);
 
   useEffect(() => {
     if (!toast) return;
-    const t = setTimeout(() => setToast(null), 3800);
-    return () => clearTimeout(t);
+    const tick = setTimeout(() => setToast(null), 3800);
+    return () => clearTimeout(tick);
   }, [toast]);
 
   useEffect(() => {
@@ -220,9 +229,9 @@ export default function App() {
         ) : null}
         {!health?.onboarding?.complete ? (
           <div className="alert warn" style={{ marginBottom: 14 }}>
-            Configure a API de IA para gerar roteiros no app.{" "}
+            {t("app.setupWarn")}{" "}
             <button type="button" className="ghost" onClick={() => setSheet("settings")}>
-              Abrir config
+              {t("app.openSettings")}
             </button>
           </div>
         ) : null}

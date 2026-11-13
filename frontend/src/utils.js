@@ -1,13 +1,18 @@
-export function statusLabel(s) {
+export function statusLabel(s, t) {
+  if (typeof t === "function") {
+    const key = `status.${s}`;
+    const v = t(key);
+    return v === key ? s : v;
+  }
   const map = {
-    draft: "Rascunho",
-    queued: "Na fila",
-    generating: "Gerando",
-    awaiting_review: "Revisão",
-    paused: "Pausado",
-    done: "Pronto",
-    failed: "Falhou",
-    archived: "Arquivada",
+    draft: "Draft",
+    queued: "Queued",
+    generating: "Generating",
+    awaiting_review: "Review",
+    paused: "Paused",
+    done: "Ready",
+    failed: "Failed",
+    archived: "Archived",
   };
   return map[s] || s;
 }
@@ -15,14 +20,14 @@ export function statusLabel(s) {
 /** Strip leftover status notes stuck in imported titles. */
 export function cleanTitle(title) {
   return String(title || "")
-    .replace(/\s*\((gerando agora|na fila[^)]*|pausad[oa][^)]*)\)\s*$/i, "")
+    .replace(/\s*\((gerando agora|na fila[^)]*|pausad[oa][^)]*|generating now|queued[^)]*|paused[^)]*)\)\s*$/i, "")
     .trim();
 }
 
-export function fmtDate(ts) {
+export function fmtDate(ts, dateLocale = "en-US") {
   if (!ts) return "—";
   try {
-    return new Date(ts * 1000).toLocaleString("pt-BR", {
+    return new Date(ts * 1000).toLocaleString(dateLocale, {
       day: "2-digit",
       month: "short",
       hour: "2-digit",
@@ -75,7 +80,6 @@ export function isNsfw(p) {
 
 export function posterSrc(p) {
   if (!p?.id) return null;
-  // NSFW nunca usa capa/poster na UI
   if (isNsfw(p)) return null;
   return `/api/projects/${p.id}/poster`;
 }

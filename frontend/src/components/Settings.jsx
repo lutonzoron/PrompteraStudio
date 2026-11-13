@@ -1,13 +1,6 @@
 import React, { useEffect, useMemo, useState } from "react";
 import { api } from "../api.js";
-
-const TABS = [
-  { id: "overview", label: "Visão geral" },
-  { id: "ia", label: "API de IA" },
-  { id: "comfy", label: "ComfyUI" },
-  { id: "energy", label: "Energia" },
-  { id: "system", label: "Sistema" },
-];
+import { LOCALES, useLocale, useT } from "../i18n/index.jsx";
 
 const STEP_TAB = {
   llm: "ia",
@@ -20,11 +13,24 @@ const STEP_TAB = {
   styles: "overview",
 };
 
+const STEP_LABEL = {
+  llm: "settings.stepLlm",
+  hardware: "settings.stepHardware",
+  comfyui: "settings.stepComfy",
+  dasiwa: "settings.stepDasiwa",
+  models_sfw: "settings.stepModels",
+  ffmpeg: "settings.stepFfmpeg",
+  cost: "settings.stepCost",
+  styles: "settings.stepStyles",
+};
+
 function StatusDot({ ok }) {
   return <i className={`dot ${ok ? "on" : "off"}`} />;
 }
 
 export default function Settings({ health, onClose, onDone, setToast, onOpenStyles }) {
+  const t = useT();
+  const { locale, setLocale } = useLocale();
   const steps = health?.onboarding?.steps || {};
   const hw = health?.onboarding?.hardware;
   const models = health?.onboarding?.models;
@@ -33,6 +39,17 @@ export default function Settings({ health, onClose, onDone, setToast, onOpenStyl
   const incomplete = useMemo(
     () => Object.entries(steps).filter(([, s]) => !s.done).map(([k]) => k),
     [steps]
+  );
+
+  const tabs = useMemo(
+    () => [
+      { id: "overview", label: t("settings.tabOverview") },
+      { id: "ia", label: t("settings.tabAi") },
+      { id: "comfy", label: t("settings.tabComfy") },
+      { id: "energy", label: t("settings.tabEnergy") },
+      { id: "system", label: t("settings.tabSystem") },
+    ],
+    [t]
   );
 
   const [tab, setTab] = useState(() => (incomplete[0] ? STEP_TAB[incomplete[0]] || "overview" : "overview"));
@@ -98,28 +115,28 @@ export default function Settings({ health, onClose, onDone, setToast, onOpenStyl
       <div className="settings-panel" onClick={(e) => e.stopPropagation()}>
         <header className="settings-head">
           <div>
-            <h2>Configuração</h2>
+            <h2>{t("settings.title")}</h2>
             <p className="muted">
               {health?.onboarding?.complete
-                ? "Setup pronto para gerar"
-                : `${incomplete.length} item(ns) pendente(s)`}
+                ? t("settings.ready")
+                : t("settings.pending", { n: incomplete.length })}
             </p>
           </div>
           <button type="button" className="ghost" onClick={onClose}>
-            Fechar
+            {t("settings.close")}
           </button>
         </header>
 
         <div className="settings-layout">
-          <nav className="settings-nav" aria-label="Seções">
-            {TABS.map((t) => (
+          <nav className="settings-nav" aria-label="Settings">
+            {tabs.map((item) => (
               <button
-                key={t.id}
+                key={item.id}
                 type="button"
-                className={`settings-nav-btn ${tab === t.id ? "active" : ""}`}
-                onClick={() => setTab(t.id)}
+                className={`settings-nav-btn ${tab === item.id ? "active" : ""}`}
+                onClick={() => setTab(item.id)}
               >
-                {t.label}
+                {item.label}
               </button>
             ))}
           </nav>
@@ -128,10 +145,27 @@ export default function Settings({ health, onClose, onDone, setToast, onOpenStyl
             {tab === "overview" ? (
               <section className="settings-section stack">
                 <div className="settings-intro">
-                  <h3>Checklist do Studio</h3>
-                  <p className="muted">
-                    Toque em um item para ir direto à aba correspondente.
-                  </p>
+                  <h3>{t("lang.label")}</h3>
+                  <p className="muted">{t("lang.hint")}</p>
+                </div>
+                <div className="field" style={{ maxWidth: 280 }}>
+                  <label htmlFor="promptera-locale">{t("lang.label")}</label>
+                  <select
+                    id="promptera-locale"
+                    value={locale}
+                    onChange={(e) => setLocale(e.target.value)}
+                  >
+                    {LOCALES.map((loc) => (
+                      <option key={loc.id} value={loc.id}>
+                        {t(loc.labelKey)}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+
+                <div className="settings-intro">
+                  <h3>{t("settings.checklist")}</h3>
+                  <p className="muted">{t("settings.checklistHint")}</p>
                 </div>
                 <div className="settings-checklist">
                   {Object.entries(steps).map(([k, s]) => (
@@ -148,9 +182,11 @@ export default function Settings({ health, onClose, onDone, setToast, onOpenStyl
                       }}
                     >
                       <StatusDot ok={!!s.done} />
-                      <span className="settings-check-label">{s.label}</span>
+                      <span className="settings-check-label">
+                        {STEP_LABEL[k] ? t(STEP_LABEL[k]) : s.label}
+                      </span>
                       <span className="settings-check-state">
-                        {s.done ? "OK" : "Configurar"}
+                        {s.done ? t("common.ok") : t("common.configure")}
                       </span>
                     </button>
                   ))}
@@ -169,14 +205,14 @@ export default function Settings({ health, onClose, onDone, setToast, onOpenStyl
                 ) : null}
                 <div className="settings-quick row">
                   <button type="button" onClick={() => setTab("ia")}>
-                    Configurar IA
+                    {t("settings.configureAi")}
                   </button>
                   <button type="button" onClick={() => setTab("comfy")}>
                     ComfyUI
                   </button>
                   {onOpenStyles ? (
                     <button type="button" onClick={onOpenStyles}>
-                      Estilos
+                      {t("settings.styles")}
                     </button>
                   ) : null}
                 </div>
@@ -186,14 +222,12 @@ export default function Settings({ health, onClose, onDone, setToast, onOpenStyl
             {tab === "ia" ? (
               <section className="settings-section stack">
                 <div className="settings-intro">
-                  <h3>API de IA</h3>
-                  <p className="muted">
-                    Usada para gerar roteiros no app (OpenAI, LM Studio, Ollama…).
-                  </p>
+                  <h3>{t("settings.aiTitle")}</h3>
+                  <p className="muted">{t("settings.aiHint")}</p>
                 </div>
                 <div className="settings-grid-2">
                   <div className="field">
-                    <label>Provedor</label>
+                    <label>{t("settings.provider")}</label>
                     <select
                       value={llm.provider}
                       onChange={(e) => setLlm({ ...llm, provider: e.target.value })}
@@ -205,7 +239,7 @@ export default function Settings({ health, onClose, onDone, setToast, onOpenStyl
                     </select>
                   </div>
                   <div className="field">
-                    <label>Modelo</label>
+                    <label>{t("settings.model")}</label>
                     <input
                       value={llm.model || ""}
                       onChange={(e) => setLlm({ ...llm, model: e.target.value })}
@@ -213,14 +247,14 @@ export default function Settings({ health, onClose, onDone, setToast, onOpenStyl
                   </div>
                 </div>
                 <div className="field">
-                  <label>Base URL</label>
+                  <label>{t("settings.baseUrl")}</label>
                   <input
                     value={llm.base_url || ""}
                     onChange={(e) => setLlm({ ...llm, base_url: e.target.value })}
                   />
                 </div>
                 <div className="field">
-                  <label>API Key</label>
+                  <label>{t("settings.apiKey")}</label>
                   <input
                     type="password"
                     placeholder="••••••••"
@@ -229,7 +263,9 @@ export default function Settings({ health, onClose, onDone, setToast, onOpenStyl
                   />
                 </div>
                 {msg ? (
-                  <div className={`alert ${msg.startsWith("IA OK") ? "good" : "bad"}`}>{msg}</div>
+                  <div className={`alert ${msg.startsWith("AI OK") || msg.startsWith("IA OK") ? "good" : "bad"}`}>
+                    {msg}
+                  </div>
                 ) : null}
                 <div className="settings-actions">
                   <button
@@ -239,13 +275,17 @@ export default function Settings({ health, onClose, onDone, setToast, onOpenStyl
                     onClick={() =>
                       withBusy(async () => {
                         const r = await api.putLlm(llm);
-                        setMsg(r.ok ? `IA OK: ${r.reply}` : `Falhou: ${r.error}`);
-                        setToast(r.ok ? "IA conectada" : "Falha na IA");
+                        setMsg(
+                          r.ok
+                            ? t("settings.aiOk", { reply: r.reply })
+                            : t("settings.aiFail", { error: r.error })
+                        );
+                        setToast(r.ok ? t("settings.aiConnected") : t("settings.aiFailedToast"));
                         onDone();
                       })
                     }
                   >
-                    Salvar e testar IA
+                    {t("settings.saveTestAi")}
                   </button>
                 </div>
               </section>
@@ -256,16 +296,16 @@ export default function Settings({ health, onClose, onDone, setToast, onOpenStyl
                 <div className="settings-intro">
                   <div className="row" style={{ justifyContent: "space-between" }}>
                     <div>
-                      <h3>ComfyUI + Continuity</h3>
-                      <p className="muted">Path, dependências, modelos e workflows H3.</p>
+                      <h3>{t("settings.comfyTitle")}</h3>
+                      <p className="muted">{t("settings.comfyHint")}</p>
                     </div>
                     <span className={`status-pill ${comfyOnline ? "done" : "failed"}`}>
-                      {comfyOnline ? "Online" : "Offline"}
+                      {comfyOnline ? t("common.online") : t("common.offline")}
                     </span>
                   </div>
                 </div>
                 <div className="field">
-                  <label>ComfyUI path</label>
+                  <label>{t("settings.comfyPath")}</label>
                   <input value={comfyRoot} onChange={(e) => setComfyRoot(e.target.value)} />
                 </div>
                 <div className="settings-actions">
@@ -275,13 +315,13 @@ export default function Settings({ health, onClose, onDone, setToast, onOpenStyl
                     onClick={() =>
                       withBusy(async () => {
                         await api.setComfyRoot(comfyRoot);
-                        setToast("Path salvo");
+                        setToast(t("settings.pathSaved"));
                         await refreshDeps();
                         onDone();
                       })
                     }
                   >
-                    Salvar path
+                    {t("settings.savePath")}
                   </button>
                   <button
                     type="button"
@@ -289,11 +329,11 @@ export default function Settings({ health, onClose, onDone, setToast, onOpenStyl
                     onClick={() =>
                       withBusy(async () => {
                         await refreshDeps();
-                        setToast("Dependências verificadas");
+                        setToast(t("settings.depsChecked"));
                       })
                     }
                   >
-                    Verificar
+                    {t("settings.verify")}
                   </button>
                   <button
                     type="button"
@@ -301,20 +341,16 @@ export default function Settings({ health, onClose, onDone, setToast, onOpenStyl
                     disabled={busy}
                     onClick={() =>
                       withBusy(async () => {
-                        setDepsMsg("Instalando o que faltar…");
+                        setDepsMsg(t("settings.installing"));
                         const r = await api.comfyEnsure(false);
                         setDeps(r.report);
-                        setDepsMsg(
-                          r.ok
-                            ? "Stack ok (Comfy / DaSiWa / workflows)"
-                            : "Ainda faltam itens — veja a lista"
-                        );
-                        setToast(r.ok ? "Dependências corrigidas" : "Correção parcial");
+                        setDepsMsg(r.ok ? t("settings.stackOk") : t("settings.stackPartial"));
+                        setToast(r.ok ? t("settings.depsFixed") : t("settings.depsPartial"));
                         onDone();
                       })
                     }
                   >
-                    Corrigir / instalar
+                    {t("settings.fixInstall")}
                   </button>
                   <button
                     type="button"
@@ -322,12 +358,12 @@ export default function Settings({ health, onClose, onDone, setToast, onOpenStyl
                     onClick={() =>
                       withBusy(async () => {
                         await api.comfyStart();
-                        setToast("ComfyUI iniciando");
+                        setToast(t("settings.comfyStarting"));
                         onDone();
                       })
                     }
                   >
-                    Iniciar ComfyUI
+                    {t("settings.startComfy")}
                   </button>
                 </div>
 
@@ -352,11 +388,11 @@ export default function Settings({ health, onClose, onDone, setToast, onOpenStyl
                             })
                           }
                         >
-                          Clonar
+                          {t("settings.clone")}
                         </button>
                       </div>
                     ) : (
-                      <span className="muted">OK</span>
+                      <span className="muted">{t("common.ok")}</span>
                     )}
                   </div>
                   <div className={`deps-row ${deps?.dasiwa?.ok ? "ok" : "bad"}`}>
@@ -379,20 +415,23 @@ export default function Settings({ health, onClose, onDone, setToast, onOpenStyl
                             })
                           }
                         >
-                          Instalar
+                          {t("settings.install")}
                         </button>
                       </div>
                     ) : (
-                      <span className="muted">OK</span>
+                      <span className="muted">{t("common.ok")}</span>
                     )}
                   </div>
                   <div className={`deps-row ${deps?.workflows?.ok ? "ok" : "bad"}`}>
                     <StatusDot ok={!!deps?.workflows?.ok} />
                     <div>
-                      <strong>Workflows H3</strong>
+                      <strong>H3 workflows</strong>
                       <div className="deps-meta">
                         {deps?.workflows
-                          ? `${deps.workflows.present}/${deps.workflows.expected} no Comfy`
+                          ? t("settings.workflowsMeta", {
+                              present: deps.workflows.present,
+                              expected: deps.workflows.expected,
+                            })
                           : "—"}
                       </div>
                     </div>
@@ -409,7 +448,7 @@ export default function Settings({ health, onClose, onDone, setToast, onOpenStyl
                           })
                         }
                       >
-                        Copiar
+                        {t("settings.copy")}
                       </button>
                     </div>
                   </div>
@@ -418,34 +457,36 @@ export default function Settings({ health, onClose, onDone, setToast, onOpenStyl
                     <div>
                       <strong>ffmpeg</strong>
                       <div className="deps-meta">
-                        {deps?.ffmpeg?.ok ? "no PATH" : "Instale e reinicie o Studio"}
+                        {deps?.ffmpeg?.ok ? t("settings.ffmpegPathOk") : t("settings.ffmpegInstall")}
                       </div>
                     </div>
-                    <span className="muted">{deps?.ffmpeg?.ok ? "OK" : "Manual"}</span>
+                    <span className="muted">
+                      {deps?.ffmpeg?.ok ? t("common.ok") : t("common.manual")}
+                    </span>
                   </div>
                 </div>
 
                 <div className="row" style={{ justifyContent: "space-between", marginTop: 4 }}>
-                  <strong style={{ fontSize: 13 }}>Modelos MiniMax H3</strong>
+                  <strong style={{ fontSize: 13 }}>{t("settings.modelsTitle")}</strong>
                   <button
                     type="button"
                     disabled={busy}
                     onClick={() =>
                       withBusy(async () => {
-                        setDepsMsg("Baixando pack SFW (pode demorar)…");
+                        setDepsMsg(t("settings.downloadingSfw"));
                         const r = await api.comfyEnsure(true);
                         setDeps(r.report);
                         setDepsMsg(
                           r.report?.models?.sfw_ready
-                            ? "Pack SFW pronto"
-                            : "SFW incompleto — veja itens sem download automático"
+                            ? t("settings.sfwReady")
+                            : t("settings.sfwIncomplete")
                         );
-                        setToast("Download SFW finalizado");
+                        setToast(t("settings.downloadDone"));
                         onDone();
                       })
                     }
                   >
-                    Baixar SFW faltantes
+                    {t("settings.downloadSfw")}
                   </button>
                 </div>
                 <div className="deps-list">
@@ -459,7 +500,7 @@ export default function Settings({ health, onClose, onDone, setToast, onOpenStyl
                         <div className="deps-meta">{m.name || m.path}</div>
                       </div>
                       {m.ok ? (
-                        <span className="muted">OK</span>
+                        <span className="muted">{t("common.ok")}</span>
                       ) : m.can_auto_download ? (
                         <div className="deps-actions">
                           <button
@@ -467,21 +508,21 @@ export default function Settings({ health, onClose, onDone, setToast, onOpenStyl
                             disabled={busy}
                             onClick={() =>
                               withBusy(async () => {
-                                setDepsMsg(`Baixando ${m.key}…`);
+                                setDepsMsg(t("settings.downloading", { key: m.key }));
                                 await api.downloadModel(m.key);
                                 await refreshDeps();
-                                setDepsMsg(`${m.key} baixado`);
+                                setDepsMsg(t("settings.downloaded", { key: m.key }));
                                 setToast(`${m.key} ok`);
                                 onDone();
                               })
                             }
                           >
-                            Baixar
+                            Download
                           </button>
                         </div>
                       ) : (
                         <span className="muted" title={m.download_hint}>
-                          Manual
+                          {t("common.manual")}
                         </span>
                       )}
                     </div>
@@ -489,8 +530,7 @@ export default function Settings({ health, onClose, onDone, setToast, onOpenStyl
                 </div>
                 {depsMsg ? <div className="alert">{depsMsg}</div> : null}
                 <div className="muted" style={{ fontSize: 11 }}>
-                  SFW: download automático via HuggingFace quando possível. NSFW: coloque os
-                  arquivos nas pastas indicadas (sem URL pública estável).
+                  {t("settings.modelsHint")}
                 </div>
               </section>
             ) : null}
@@ -498,22 +538,20 @@ export default function Settings({ health, onClose, onDone, setToast, onOpenStyl
             {tab === "energy" ? (
               <section className="settings-section stack">
                 <div className="settings-intro">
-                  <h3>Custo de energia</h3>
-                  <p className="muted">
-                    Usado para estimar R$ e minutos na fila e na página do projeto.
-                  </p>
+                  <h3>{t("settings.energyTitle")}</h3>
+                  <p className="muted">{t("settings.energyHint")}</p>
                 </div>
                 <div className="settings-grid-2">
                   <div className="field">
-                    <label>Watts (GPU + sistema)</label>
+                    <label>{t("settings.watts")}</label>
                     <input
                       value={machine.watts}
                       onChange={(e) => setMachine({ ...machine, watts: e.target.value })}
-                      placeholder="ex. 280"
+                      placeholder={t("settings.wattsPh")}
                     />
                   </div>
                   <div className="field">
-                    <label>Tarifa R$/kWh</label>
+                    <label>{t("settings.tariff")}</label>
                     <input
                       value={machine.tariff_brl_per_kwh}
                       onChange={(e) =>
@@ -524,7 +562,10 @@ export default function Settings({ health, onClose, onDone, setToast, onOpenStyl
                 </div>
                 {hw ? (
                   <div className="alert">
-                    Sugestão de hardware: {hw.gpu_name || "GPU"} · {hw.vram_gb ?? "?"} GB
+                    {t("settings.hwSuggest", {
+                      gpu: hw.gpu_name || "GPU",
+                      vram: hw.vram_gb ?? "?",
+                    })}
                     {hw.message ? ` — ${hw.message}` : ""}
                   </div>
                 ) : null}
@@ -539,12 +580,12 @@ export default function Settings({ health, onClose, onDone, setToast, onOpenStyl
                           watts: machine.watts ? Number(machine.watts) : null,
                           tariff_brl_per_kwh: Number(machine.tariff_brl_per_kwh),
                         });
-                        setToast("Custo salvo");
+                        setToast(t("settings.costSaved"));
                         onDone();
                       })
                     }
                   >
-                    Salvar custo
+                    {t("settings.saveCost")}
                   </button>
                 </div>
               </section>
@@ -553,8 +594,8 @@ export default function Settings({ health, onClose, onDone, setToast, onOpenStyl
             {tab === "system" ? (
               <section className="settings-section stack">
                 <div className="settings-intro">
-                  <h3>Sistema</h3>
-                  <p className="muted">Hardware, ffmpeg e packs de modelo detectados.</p>
+                  <h3>{t("settings.systemTitle")}</h3>
+                  <p className="muted">{t("settings.systemHint")}</p>
                 </div>
                 {hw ? (
                   <div
@@ -564,41 +605,40 @@ export default function Settings({ health, onClose, onDone, setToast, onOpenStyl
                   >
                     <strong>
                       {hw.verdict === "ok"
-                        ? "Hardware ok"
+                        ? t("settings.hwOk")
                         : hw.verdict === "tight"
-                          ? "Apertado"
-                          : "Atenção"}
+                          ? t("settings.hwTight")
+                          : t("settings.hwWarn")}
                     </strong>
                     <div>{hw.message}</div>
                     <div className="muted" style={{ marginTop: 6 }}>
-                      {hw.gpu_name || "GPU desconhecida"} · {hw.vram_gb ?? "?"} GB VRAM
-                      {hw.ffmpeg?.ok ? " · ffmpeg OK" : " · ffmpeg ausente"}
+                      {hw.gpu_name || t("settings.gpuUnknown")} · {hw.vram_gb ?? "?"} GB VRAM
+                      {hw.ffmpeg?.ok ? " · ffmpeg OK" : " · ffmpeg missing"}
                     </div>
                   </div>
                 ) : (
-                  <div className="alert warn">Hardware ainda não detectado.</div>
+                  <div className="alert warn">{t("settings.hwUnknown")}</div>
                 )}
                 <div className="settings-card-grid">
                   <div className="settings-card">
                     <strong>ffmpeg</strong>
                     <p className="muted">
-                      {steps.ffmpeg?.done
-                        ? "Encontrado no PATH — posters e masters ok."
-                        : "Não encontrado. Instale e reinicie o Studio."}
+                      {steps.ffmpeg?.done ? t("settings.ffmpegOkCard") : t("settings.ffmpegMissing")}
                     </p>
                     <StatusDot ok={!!steps.ffmpeg?.done} />
                   </div>
                   <div className="settings-card">
-                    <strong>Modelos SFW</strong>
+                    <strong>{t("settings.modelsSfwCard")}</strong>
                     <p className="muted">
-                      {models?.sfw_ready
-                        ? "Pack Continuity SFW pronto."
-                        : "Baixe os checkpoints MiniMax H3 no ComfyUI."}
+                      {models?.sfw_ready ? t("settings.modelsSfwReady") : t("settings.modelsSfwNeed")}
                     </p>
                     {models?.missing_sfw?.length ? (
                       <p className="muted" style={{ fontSize: 11 }}>
-                        Faltando: {models.missing_sfw.slice(0, 3).join(", ")}
-                        {models.missing_sfw.length > 3 ? "…" : ""}
+                        {t("settings.missing", {
+                          list:
+                            models.missing_sfw.slice(0, 3).join(", ") +
+                            (models.missing_sfw.length > 3 ? "…" : ""),
+                        })}
                       </p>
                     ) : null}
                     <StatusDot ok={!!models?.sfw_ready || !!steps.models_sfw?.done} />
@@ -606,10 +646,10 @@ export default function Settings({ health, onClose, onDone, setToast, onOpenStyl
                 </div>
                 <div className="settings-actions">
                   <button type="button" onClick={() => onDone()}>
-                    Atualizar status
+                    {t("settings.refreshStatus")}
                   </button>
                   <button type="button" onClick={() => setTab("comfy")}>
-                    Ir para ComfyUI
+                    {t("settings.goComfy")}
                   </button>
                 </div>
               </section>

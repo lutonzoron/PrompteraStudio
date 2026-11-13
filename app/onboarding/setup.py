@@ -282,7 +282,7 @@ def onboarding_status() -> dict[str, Any]:
     models = model_status()
     root = comfy_root()
     steps = {
-        "llm": {"done": llm_ok, "label": "API de IA"},
+        "llm": {"done": llm_ok, "label": "AI API"},
         "hardware": {
             "done": hw["verdict"] in {"ok", "tight", "unknown"},
             "label": "Hardware",
@@ -293,15 +293,15 @@ def onboarding_status() -> dict[str, Any]:
             "label": "ComfyUI",
         },
         "dasiwa": {"done": dasiwa_installed(), "label": "DaSiWa Continuity"},
-        "models_sfw": {"done": models["sfw_ready"], "label": "Modelos SFW"},
+        "models_sfw": {"done": models["sfw_ready"], "label": "SFW models"},
         "ffmpeg": {"done": hw["ffmpeg"]["ok"], "label": "ffmpeg"},
         "cost": {
             "done": bool(db.get_setting("machine_profile")),
-            "label": "Custo de energia",
+            "label": "Energy cost",
         },
         "styles": {
             "done": len(db.list_styles()) > 0,
-            "label": "Estilos",
+            "label": "Styles",
         },
     }
     essential = ["llm", "comfyui", "dasiwa", "models_sfw", "ffmpeg"]

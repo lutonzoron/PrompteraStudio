@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from "react";
 import { api } from "../api.js";
+import { useT } from "../i18n/index.jsx";
 
 function DiceIcon() {
   return (
@@ -23,6 +24,7 @@ function DiceIcon() {
 }
 
 export default function CreateSheet({ styles, busy, setBusy, setToast, onClose, onCreated }) {
+  const t = useT();
   const [form, setForm] = useState({
     title: "",
     brief: "",
@@ -52,7 +54,7 @@ export default function CreateSheet({ styles, busy, setBusy, setToast, onClose, 
         brief: d.brief,
         title: d.title || f.title,
       }));
-      setToast("Ideia aleatória gerada");
+      setToast(t("create.diceToast"));
     } catch (e) {
       setToast(String(e.message || e));
     } finally {
@@ -65,33 +67,33 @@ export default function CreateSheet({ styles, busy, setBusy, setToast, onClose, 
       <div className="create-modal" onClick={(e) => e.stopPropagation()}>
         <header className="create-modal-head">
           <div>
-            <h2>Nova história</h2>
-            <p className="muted">Brief, estilo e pack — a IA monta o roteiro Continuity</p>
+            <h2>{t("create.title")}</h2>
+            <p className="muted">{t("create.subtitle")}</p>
           </div>
           <button type="button" className="ghost" onClick={onClose}>
-            Fechar
+            {t("common.close")}
           </button>
         </header>
 
         <div className="create-modal-body stack">
           <div className="field">
-            <label>Título</label>
+            <label>{t("create.titleLabel")}</label>
             <input
               value={form.title}
               onChange={(e) => setForm({ ...form, title: e.target.value })}
-              placeholder="Opcional — a IA pode sugerir"
+              placeholder={t("create.titlePh")}
             />
           </div>
 
           <div className="field">
             <div className="create-brief-label">
-              <label>Brief / história</label>
+              <label>{t("create.briefLabel")}</label>
               <button
                 type="button"
                 className="dice-btn"
                 disabled={busy}
-                title="Gerar história aleatória"
-                aria-label="Gerar história aleatória"
+                title={t("create.diceTitle")}
+                aria-label={t("create.diceTitle")}
                 onClick={rollDice}
               >
                 <DiceIcon />
@@ -100,21 +102,21 @@ export default function CreateSheet({ styles, busy, setBusy, setToast, onClose, 
             <textarea
               value={form.brief}
               onChange={(e) => setForm({ ...form, brief: e.target.value })}
-              placeholder="Descreva a cena… ou role o dado para inventar"
+              placeholder={t("create.briefPh")}
               className="create-brief"
             />
             <div className="muted" style={{ fontSize: 11, marginTop: 6 }}>
-              Clique no dado para a IA inventar um brief {form.model_pack.toUpperCase()}.
+              {t("create.diceHint", { pack: form.model_pack.toUpperCase() })}
             </div>
           </div>
 
           <div className="field">
-            <label>Estilo</label>
+            <label>{t("create.style")}</label>
             <select
               value={form.style_id}
               onChange={(e) => setForm({ ...form, style_id: e.target.value })}
             >
-              <option value="">Sem estilo</option>
+              <option value="">{t("create.noStyle")}</option>
               {styles.map((s) => (
                 <option key={s.id} value={s.id}>
                   {s.label}
@@ -146,19 +148,19 @@ export default function CreateSheet({ styles, busy, setBusy, setToast, onClose, 
               className={`chip ${form.review_mode === "automatico" ? "active" : ""}`}
               onClick={() => setForm({ ...form, review_mode: "automatico" })}
             >
-              Sem revisão
+              {t("create.noReview")}
             </button>
             <button
               type="button"
               className={`chip ${form.review_mode === "com_revisao" ? "active" : ""}`}
               onClick={() => setForm({ ...form, review_mode: "com_revisao" })}
             >
-              Com revisão
+              {t("create.withReview")}
             </button>
           </div>
 
           <div className="field" style={{ maxWidth: 220 }}>
-            <label>Tempo máximo (s)</label>
+            <label>{t("create.maxTime")}</label>
             <input
               type="number"
               min={10}
@@ -172,12 +174,15 @@ export default function CreateSheet({ styles, busy, setBusy, setToast, onClose, 
         <footer className="create-modal-foot">
           {estimate ? (
             <div className="cta-cost">
-              Estimativa: <strong>~{estimate.total_min} min</strong> · {estimate.energy_kwh} kWh ·{" "}
-              <strong>R$ {estimate.cost_brl}</strong>
-              <span className="muted"> · ≈ {estimate.take_count} takes</span>
+              {t("create.estimate", {
+                min: estimate.total_min,
+                kwh: estimate.energy_kwh,
+                cost: estimate.cost_brl,
+              })}
+              <span className="muted">{t("create.estimateTakes", { n: estimate.take_count })}</span>
             </div>
           ) : (
-            <div className="cta-cost">Calculando estimativa…</div>
+            <div className="cta-cost">{t("create.estimating")}</div>
           )}
           <button
             type="button"
@@ -188,13 +193,13 @@ export default function CreateSheet({ styles, busy, setBusy, setToast, onClose, 
               try {
                 const p = await api.createProject({
                   ...form,
-                  title: form.title || "Nova história",
+                  title: form.title || t("create.defaultTitle"),
                 });
                 const result = await api.generateStory(p.id, {
                   brief: form.brief,
                   use_dice: !form.brief.trim(),
                 });
-                setToast("Roteiro pronto");
+                setToast(t("create.readyToast"));
                 onCreated(result.project);
               } catch (e) {
                 setToast(String(e.message || e));
@@ -203,7 +208,7 @@ export default function CreateSheet({ styles, busy, setBusy, setToast, onClose, 
               }
             }}
           >
-            Gerar roteiro + takes
+            {t("create.submit")}
           </button>
         </footer>
       </div>

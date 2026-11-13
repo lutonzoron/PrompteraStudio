@@ -180,7 +180,8 @@ class ContinuityRunner:
         self.wait_review = wait_review
         self.client = ComfyClient()
         pack = MODELS_NSFW if project.get("model_pack") == "nsfw" else MODELS_SFW
-        self.unet = pack["unet"]
+        # Comfy on Windows expects nested diffusion model paths with '\'
+        self.unet = str(pack["unet"]).replace("/", "\\")
         self.clip = pack["clip"]
         self.vae_v = pack["vae_v"]
         self.vae_a = pack["vae_a"]

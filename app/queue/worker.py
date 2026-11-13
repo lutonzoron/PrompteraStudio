@@ -47,11 +47,30 @@ async def enqueue_generation(project_id: str, priority: int = 100) -> dict[str, 
         raise RuntimeError("Projeto não encontrado")
     takes = project.get("takes") or []
     if not takes:
-        raise RuntimeError("Projeto sem takes — gere a história primeiro")
+        raise RuntimeError("Project has no takes — generate the story first")
+    # Explicit enqueue from UI/API = Promptera owns generation (drop external sync lock).
+    stats = dict(project.get("stats") or {})
+    if stats.get("external_runner"):
+        stats.pop("external_runner", None)
+        stats.pop("waiting_for", None)
+        stats.pop("external_state_path", None)
+        stats.pop("external_log_path", None)
+        stats.pop("external_done_markers", None)
+        stats["note"] = "Promptera worker generation (manual enqueue)"
+        st = db.get_runner_state(project_id)
+        st.pop("external", None)
+        st.pop("waiting_for", None)
+        db.save_runner_state(project_id, st)
     # assign queue position
     queued = db.queued_projects()
     pos = (max((p.get("queue_pos") or 0) for p in queued) + 1) if queued else 1
-    db.update_project(project_id, status="queued", queue_pos=pos, error=None)
+    db.update_project(
+        project_id,
+        status="queued",
+        queue_pos=pos,
+        error=None,
+        stats=stats,
+    )
     job = db.enqueue_job(project_id, "generate_video", {}, priority=priority)
     await broadcast({"type": "job_queued", "job": job, "project_id": project_id})
     return job

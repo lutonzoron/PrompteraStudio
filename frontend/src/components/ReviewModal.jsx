@@ -1,7 +1,9 @@
 import React, { useState } from "react";
 import { api } from "../api.js";
+import { useT } from "../i18n/index.jsx";
 
 export default function ReviewModal({ review, onDone, setToast }) {
+  const t = useT();
   const [mode, setMode] = useState("current");
   const src =
     mode === "full"
@@ -12,38 +14,42 @@ export default function ReviewModal({ review, onDone, setToast }) {
     <div className="review-modal">
       <div className="row" style={{ padding: "12px 16px", justifyContent: "space-between" }}>
         <strong>
-          Take {review.take}/{review.total} — {review.title}
+          {t("review.takeOf", {
+            take: review.take,
+            total: review.total,
+            title: review.title,
+          })}
         </strong>
         <button type="button" className="ghost" onClick={onDone}>
-          Minimizar
+          {t("review.minimize")}
         </button>
       </div>
       <video key={src} src={src} controls autoPlay playsInline />
       <div className="review-actions">
         <button type="button" onClick={() => setMode(mode === "full" ? "current" : "full")}>
-          {mode === "full" ? "Ver take atual" : "Ver tudo junto"}
+          {mode === "full" ? t("review.viewCurrent") : t("review.viewFull")}
         </button>
         <button
           type="button"
           className="ok"
           onClick={async () => {
             await api.review(review.project_id, "approve");
-            setToast("Aprovado");
+            setToast(t("review.approvedToast"));
             onDone();
           }}
         >
-          Aprovar
+          {t("review.approve")}
         </button>
         <button
           type="button"
           className="danger"
           onClick={async () => {
             await api.review(review.project_id, "reject");
-            setToast("Reprovado — refazendo");
+            setToast(t("review.rejectedToast"));
             onDone();
           }}
         >
-          Reprovar
+          {t("review.reject")}
         </button>
       </div>
     </div>

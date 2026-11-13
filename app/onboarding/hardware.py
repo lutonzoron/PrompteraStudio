@@ -58,38 +58,38 @@ def hardware_report() -> dict[str, Any]:
 
     if vram_gb is None:
         verdict = "unknown"
-        message = "Não foi possível detectar GPU NVIDIA (nvidia-smi)."
+        message = "Could not detect an NVIDIA GPU (nvidia-smi)."
         recommendations = [
-            "Instale drivers NVIDIA e confirme nvidia-smi no PATH.",
-            "H3 Continuity precisa ~12 GB VRAM (8 GB apertado).",
+            "Install NVIDIA drivers and confirm nvidia-smi is on PATH.",
+            "H3 Continuity needs ~12 GB VRAM (8 GB is tight).",
         ]
     elif vram_gb >= 12:
         verdict = "ok"
-        message = f"VRAM {vram_gb} GB — adequado para MiniMax H3 Continuity."
+        message = f"VRAM {vram_gb} GB — suitable for MiniMax H3 Continuity."
         recommendations = [
-            "Use 544×992, blocos Continuity ≤3–4 takes.",
-            "Overlap 22, 8 steps (defaults da skill).",
+            "Use 544×992, Continuity blocks ≤3–4 takes.",
+            "Overlap 22, 8 steps (skill defaults).",
         ]
     elif vram_gb >= 8:
         verdict = "tight"
-        message = f"VRAM {vram_gb} GB — possível, mas apertado/lento."
+        message = f"VRAM {vram_gb} GB — possible, but tight/slow."
         recommendations = [
-            "Blocos Continuity curtos (2–3 takes).",
-            "Evite filas longas overnight sem monitorar OOM.",
-            "Feche outros apps GPU.",
+            "Keep Continuity blocks short (2–3 takes).",
+            "Avoid long overnight queues without watching for OOM.",
+            "Close other GPU apps.",
         ]
     else:
         verdict = "insufficient"
-        message = f"VRAM {vram_gb} GB — abaixo do mínimo prático (~8 GB)."
+        message = f"VRAM {vram_gb} GB — below the practical minimum (~8 GB)."
         recommendations = [
-            "Considere GPU ≥8 GB (ideal 12+).",
-            "Geração pode falhar por OOM.",
+            "Prefer a GPU with ≥8 GB (ideally 12+).",
+            "Generation may fail with OOM.",
         ]
 
     if ram_gb is not None and ram_gb < 24:
-        recommendations.append("RAM <32 GB: offload pode ficar lento.")
+        recommendations.append("RAM <32 GB: offload may be slow.")
     if disk_gb is not None and disk_gb < 40:
-        recommendations.append("Pouco disco livre — modelos H3 são grandes.")
+        recommendations.append("Low free disk — H3 models are large.")
 
     return {
         "os": platform.platform(),

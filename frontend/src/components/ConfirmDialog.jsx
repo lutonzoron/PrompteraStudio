@@ -1,30 +1,35 @@
 import React, { createContext, useCallback, useContext, useMemo, useState } from "react";
+import { useT } from "../i18n/index.jsx";
 
 const ConfirmContext = createContext(null);
 
 export function ConfirmProvider({ children }) {
+  const t = useT();
   const [dialog, setDialog] = useState(null);
 
-  const confirm = useCallback((opts = {}) => {
-    const {
-      title = "Confirmar",
-      message = "",
-      confirmLabel = "OK",
-      cancelLabel = "Cancelar",
-      danger = false,
-    } = typeof opts === "string" ? { message: opts } : opts;
+  const confirm = useCallback(
+    (opts = {}) => {
+      const {
+        title = t("confirm.defaultTitle"),
+        message = "",
+        confirmLabel = t("confirm.ok"),
+        cancelLabel = t("confirm.cancel"),
+        danger = false,
+      } = typeof opts === "string" ? { message: opts } : opts;
 
-    return new Promise((resolve) => {
-      setDialog({
-        title,
-        message,
-        confirmLabel,
-        cancelLabel,
-        danger,
-        resolve,
+      return new Promise((resolve) => {
+        setDialog({
+          title,
+          message,
+          confirmLabel,
+          cancelLabel,
+          danger,
+          resolve,
+        });
       });
-    });
-  }, []);
+    },
+    [t]
+  );
 
   const close = useCallback(
     (value) => {
@@ -91,11 +96,14 @@ export function ConfirmProvider({ children }) {
 }
 
 export function useConfirm() {
+  const t = useT();
   const ctx = useContext(ConfirmContext);
   if (!ctx) {
     return (opts) =>
       Promise.resolve(
-        window.confirm(typeof opts === "string" ? opts : opts?.message || "Confirmar?")
+        window.confirm(
+          typeof opts === "string" ? opts : opts?.message || t("confirm.defaultTitle")
+        )
       );
   }
   return ctx;

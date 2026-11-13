@@ -2,9 +2,10 @@ import React, { useEffect, useMemo, useState } from "react";
 import { api } from "../api.js";
 import { useConfirm } from "./ConfirmDialog.jsx";
 import { cleanTitle, fmtDate, isNsfw, posterSrc, statusLabel } from "../utils.js";
+import { useLocale, useT } from "../i18n/index.jsx";
 
-function reviewLabel(mode) {
-  return mode === "com_revisao" ? "Com revisão" : "Automático";
+function reviewLabel(mode, t) {
+  return mode === "com_revisao" ? t("project.modeReviewLong") : t("project.reviewModeShort");
 }
 
 export default function ProjectPage({
@@ -16,6 +17,8 @@ export default function ProjectPage({
   onRefresh,
   onBack,
 }) {
+  const t = useT();
+  const { dateLocale } = useLocale();
   const confirm = useConfirm();
   const [estimate, setEstimate] = useState(project?.estimate || null);
   const [masterOk, setMasterOk] = useState(!!project?.has_master || !!project?.master_url);
@@ -60,7 +63,7 @@ export default function ProjectPage({
   const synopsis = project.synopsis || project.brief || "";
   const currentTake =
     project.runner_state?.current_take ||
-    takes.map((t) => Number(t.n)).find((n) => n && !done.has(n)) ||
+    takes.map((tk) => Number(tk.n)).find((n) => n && !done.has(n)) ||
     null;
   const isGenerating = ["generating", "queued", "paused"].includes(project.status);
 
@@ -68,7 +71,7 @@ export default function ProjectPage({
     setBusy(true);
     try {
       await api.enqueue(project.id);
-      setToast("Na fila de geração");
+      setToast(t("project.queuedToast"));
       onRefresh();
     } catch (e) {
       setToast(String(e.message || e));
@@ -83,7 +86,7 @@ export default function ProjectPage({
       const r = await api.generateStory(project.id, { brief: project.brief });
       setProject(r.project);
       setEstimate(r.estimate);
-      setToast("Roteiro regenerado");
+      setToast(t("project.scriptRegenerated"));
       onRefresh();
     } catch (e) {
       setToast(String(e.message || e));
@@ -111,7 +114,24 @@ export default function ProjectPage({
       const p = await api.patchProject(project.id, { title: next });
       setProject(p);
       setEditingTitle(false);
-      setToast("Nome atualizado");
+      setToast(t("project.titleUpdated"));
+      onRefresh();
+    } catch (e) {
+      setToast(String(e.message || e));
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function buildMasterClick() {
+    setBusy(true);
+    try {
+      const r = await api.buildMaster(project.id, true);
+      setMasterOk(true);
+      setProject({ ...project, has_master: true, master_url: r.master_url });
+      setToast(
+        r.built ? t("project.masterBuilt", { n: r.clip_count }) : t("project.masterExists")
+      );
       onRefresh();
     } catch (e) {
       setToast(String(e.message || e));
@@ -124,14 +144,14 @@ export default function ProjectPage({
     <div className="project-page">
       <nav className="pp-crumb">
         <button type="button" className="pp-back" onClick={onBack}>
-          <span aria-hidden>←</span> Studio
+          <span aria-hidden>←</span> {t("project.backStudio")}
         </button>
         <span className="pp-crumb-sep" aria-hidden>
           /
         </span>
         <span className="pp-crumb-title">{cleanTitle(project.title)}</span>
         <div className="pp-crumb-pills">
-          <span className={`status-pill ${project.status}`}>{statusLabel(project.status)}</span>
+          <span className={`status-pill ${project.status}`}>{statusLabel(project.status, t)}</span>
           {nsfw ? (
             <span className="status-pill nsfw">NSFW</span>
           ) : (
@@ -158,35 +178,11 @@ export default function ProjectPage({
             ) : (
               <div className="pp-empty-mark">▶</div>
             )}
-            <p>Master ainda não gerado</p>
-            <p className="muted">
-              Monte o master a partir dos takes já renderizados, ou enfileire a geração.
-            </p>
+            <p>{t("project.masterNotReady")}</p>
+            <p className="muted">{t("project.masterNotReadyHint")}</p>
             <div className="row" style={{ justifyContent: "center", marginTop: 8 }}>
-              <button
-                type="button"
-                className="primary"
-                disabled={busy}
-                onClick={async () => {
-                  setBusy(true);
-                  try {
-                    const r = await api.buildMaster(project.id, true);
-                    setMasterOk(true);
-                    setProject({ ...project, has_master: true, master_url: r.master_url });
-                    setToast(
-                      r.built
-                        ? `Master montado (${r.clip_count} clipes)`
-                        : "Master já existia"
-                    );
-                    onRefresh();
-                  } catch (e) {
-                    setToast(String(e.message || e));
-                  } finally {
-                    setBusy(false);
-                  }
-                }}
-              >
-                Gerar master
+              <button type="button" className="primary" disabled={busy} onClick={buildMasterClick}>
+                {t("project.buildMaster")}
               </button>
             </div>
           </div>
@@ -216,7 +212,7 @@ export default function ProjectPage({
                 }}
               />
               <button type="button" className="primary" disabled={busy} onClick={saveTitle}>
-                Salvar
+                {t("common.save")}
               </button>
               <button
                 type="button"
@@ -227,7 +223,7 @@ export default function ProjectPage({
                   setTitleDraft(cleanTitle(project.title));
                 }}
               >
-                Cancelar
+                {t("project.cancelEdit")}
               </button>
             </div>
           ) : (
@@ -236,8 +232,8 @@ export default function ProjectPage({
               <button
                 type="button"
                 className="pp-edit-title"
-                title="Editar nome"
-                aria-label="Editar nome do vídeo"
+                title={t("project.editTitle")}
+                aria-label={t("project.editTitleAria")}
                 onClick={() => {
                   setTitleDraft(cleanTitle(project.title));
                   setEditingTitle(true);
@@ -250,20 +246,25 @@ export default function ProjectPage({
                     strokeWidth="1.8"
                     strokeLinejoin="round"
                   />
-                  <path d="M13 7l4 4" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" />
+                  <path
+                    d="M13 7l4 4"
+                    stroke="currentColor"
+                    strokeWidth="1.8"
+                    strokeLinecap="round"
+                  />
                 </svg>
               </button>
             </div>
           )}
           {synopsis ? <p className="pp-synopsis">{synopsis}</p> : null}
           <div className="pp-meta-line">
-            <span>{fmtDate(project.updated_at || project.created_at)}</span>
+            <span>{fmtDate(project.updated_at || project.created_at, dateLocale)}</span>
             <span>·</span>
             <span>{project.slug}</span>
             {masterOk ? (
               <>
                 <span>·</span>
-                <span className="pp-meta-ok">master pronto</span>
+                <span className="pp-meta-ok">{t("project.masterReady")}</span>
               </>
             ) : null}
           </div>
@@ -275,32 +276,11 @@ export default function ProjectPage({
               href={masterUrl}
               download={`${project.slug || "video"}_master.mp4`}
             >
-              Baixar master
+              {t("project.downloadMaster")}
             </a>
           ) : (
-            <button
-              type="button"
-              disabled={busy}
-              onClick={async () => {
-                setBusy(true);
-                try {
-                  const r = await api.buildMaster(project.id, true);
-                  setMasterOk(true);
-                  setProject({ ...project, has_master: true, master_url: r.master_url });
-                  setToast(
-                    r.built
-                      ? `Master montado (${r.clip_count} clipes)`
-                      : "Master já existia"
-                  );
-                  onRefresh();
-                } catch (e) {
-                  setToast(String(e.message || e));
-                } finally {
-                  setBusy(false);
-                }
-              }}
-            >
-              Gerar master
+            <button type="button" disabled={busy} onClick={buildMasterClick}>
+              {t("project.buildMaster")}
             </button>
           )}
           <button
@@ -309,30 +289,28 @@ export default function ProjectPage({
             disabled={busy || !takes.length || project.status === "archived"}
             onClick={enqueue}
           >
-            {isDone ? "Gerar de novo" : "Enfileirar geração"}
+            {isDone ? t("project.regenerate") : t("project.enqueue")}
           </button>
         </div>
       </header>
 
       <div className="pp-stats">
         <div className="pp-stat">
-          <span className="pp-stat-label">Progresso</span>
-          <strong>
-            {done.size}/{takes.length || "—"} takes
-          </strong>
+          <span className="pp-stat-label">{t("project.progress")}</span>
+          <strong>{t("library.takesMeta", { done: done.size, total: takes.length || "—" })}</strong>
           <div className="progress pp-progress">
             <i style={{ width: `${pct}%` }} />
           </div>
         </div>
         <div className="pp-stat">
-          <span className="pp-stat-label">Tempo restante</span>
+          <span className="pp-stat-label">{t("project.timeRemaining")}</span>
           <strong>{estimate ? `~${estimate.total_min} min` : "—"}</strong>
           <span className="muted">
             {estimate?.finish_at
-              ? `termina ~${estimate.finish_at}`
+              ? t("project.finishesAt", { at: estimate.finish_at })
               : remaining
-                ? `${remaining} takes restantes`
-                : "completo"}
+                ? t("project.takesRemaining", { n: remaining })
+                : t("project.complete")}
           </span>
           {estimate?.current_take && remaining ? (
             <span className="muted">
@@ -344,26 +322,26 @@ export default function ProjectPage({
           ) : null}
         </div>
         <div className="pp-stat">
-          <span className="pp-stat-label">Custo est.</span>
+          <span className="pp-stat-label">{t("project.estCost")}</span>
           <strong>{estimate ? `R$ ${estimate.cost_brl}` : "—"}</strong>
-          <span className="muted">{estimate?.source || "energia H3"}</span>
+          <span className="muted">{estimate?.source || t("project.energyH3")}</span>
         </div>
         <div className="pp-stat">
-          <span className="pp-stat-label">Revisão</span>
+          <span className="pp-stat-label">{t("project.reviewModeLabel")}</span>
           <div className="pp-seg">
             <button
               type="button"
               className={project.review_mode !== "com_revisao" ? "on" : ""}
               onClick={() => setReviewMode("automatico")}
             >
-              Auto
+              {t("project.reviewAutoShort")}
             </button>
             <button
               type="button"
               className={project.review_mode === "com_revisao" ? "on" : ""}
               onClick={() => setReviewMode("com_revisao")}
             >
-              Take a take
+              {t("project.reviewPerTake")}
             </button>
           </div>
         </div>
@@ -372,60 +350,58 @@ export default function ProjectPage({
       <div className="pp-body">
         <aside className="pp-side stack">
           <div className="pp-panel">
-            <h2>Produção</h2>
+            <h2>{t("project.production")}</h2>
             <dl className="pp-dl">
               <div>
-                <dt>Pack</dt>
+                <dt>{t("project.pack")}</dt>
                 <dd>{nsfw ? "NSFW" : "SFW"}</dd>
               </div>
               <div>
-                <dt>Modo</dt>
-                <dd>{reviewLabel(project.review_mode)}</dd>
+                <dt>{t("project.mode")}</dt>
+                <dd>{reviewLabel(project.review_mode, t)}</dd>
               </div>
               <div>
-                <dt>Estilo</dt>
+                <dt>{t("project.style")}</dt>
                 <dd>{project.style_name || project.style_id || "—"}</dd>
               </div>
               <div>
-                <dt>Status</dt>
-                <dd>{statusLabel(project.status)}</dd>
+                <dt>{t("project.status")}</dt>
+                <dd>{statusLabel(project.status, t)}</dd>
               </div>
             </dl>
-            {isDone ? (
-              <div className="alert good">Fluxo concluído — use o player acima.</div>
-            ) : null}
+            {isDone ? <div className="alert good">{t("project.flowDone")}</div> : null}
             <div className="pp-side-actions">
               <button type="button" disabled={busy} onClick={regen}>
-                Regenerar roteiro
+                {t("project.regenScript")}
               </button>
               {project.status === "archived" ? (
                 <button
                   type="button"
                   onClick={async () => {
                     await api.restoreProject(project.id);
-                    setToast("Restaurada");
+                    setToast(t("library.restoredToast"));
                     onRefresh();
                   }}
                 >
-                  Restaurar
+                  {t("library.restore")}
                 </button>
               ) : (
                 <button
                   type="button"
                   onClick={async () => {
                     const ok = await confirm({
-                      title: "Arquivar história",
-                      message: `Arquivar “${cleanTitle(project.title)}”? Você pode restaurar depois.`,
-                      confirmLabel: "Arquivar",
+                      title: t("project.archiveTitle"),
+                      message: t("library.archiveMsg", { title: cleanTitle(project.title) }),
+                      confirmLabel: t("project.archive"),
                     });
                     if (!ok) return;
                     await api.deleteProject(project.id, false);
-                    setToast("Arquivada");
+                    setToast(t("library.archivedToast"));
                     onBack();
                     onRefresh();
                   }}
                 >
-                  Arquivar
+                  {t("project.archive")}
                 </button>
               )}
               <button
@@ -433,19 +409,19 @@ export default function ProjectPage({
                 className="danger"
                 onClick={async () => {
                   const ok = await confirm({
-                    title: "Excluir permanentemente",
-                    message: `Excluir “${cleanTitle(project.title)}”?\nApaga o projeto e os arquivos locais. Não dá para desfazer.`,
-                    confirmLabel: "Excluir",
+                    title: t("project.deleteTitle"),
+                    message: t("project.deleteMsg"),
+                    confirmLabel: t("common.delete"),
                     danger: true,
                   });
                   if (!ok) return;
                   await api.deleteProject(project.id, true);
-                  setToast("Excluída");
+                  setToast(t("library.deletedToast"));
                   onBack();
                   onRefresh();
                 }}
               >
-                Excluir
+                {t("project.delete")}
               </button>
             </div>
           </div>
@@ -453,30 +429,30 @@ export default function ProjectPage({
 
         <section className="pp-shots">
           <div className="pp-shots-head">
-            <h2>Shot list</h2>
+            <h2>{t("project.shotList")}</h2>
             <span className="muted">
-              {takes.length} takes · {done.size} prontos
+              {t("project.takesReady", { total: takes.length, done: done.size })}
             </span>
           </div>
 
           {takes.length === 0 ? (
             <div className="pp-shots-empty">
-              <p>Sem takes ainda</p>
-              <p className="muted">Gere o roteiro com IA para montar a lista.</p>
+              <p>{t("project.noTakes")}</p>
+              <p className="muted">{t("project.noTakesHint")}</p>
               <button type="button" className="primary" disabled={busy} onClick={regen}>
-                Gerar roteiro
+                {t("project.genScript")}
               </button>
             </div>
           ) : (
             <div className="pp-shot-list">
-              {takes.map((t, idx) => {
-                const n = Number(t.n);
+              {takes.map((tk, idx) => {
+                const n = Number(tk.n);
                 const ok = done.has(n);
                 const open = focusTake === n;
                 const live = isGenerating && currentTake === n;
                 return (
                   <article
-                    key={t.n || idx}
+                    key={tk.n || idx}
                     className={`pp-shot ${ok ? "is-done" : ""} ${open ? "is-open" : ""} ${
                       live ? "is-live" : ""
                     }`}
@@ -487,17 +463,19 @@ export default function ProjectPage({
                       onClick={() => setFocusTake(open ? null : n)}
                     >
                       <span className={`pp-shot-num ${ok ? "ok" : ""} ${live ? "live" : ""}`}>
-                        {ok ? "✓" : live ? "●" : t.n}
+                        {ok ? "✓" : live ? "●" : tk.n}
                       </span>
                       <div className="pp-shot-sum">
                         <strong>
-                          Take {t.n}
-                          <span className="pp-shot-kind">{t.kind}</span>
-                          {live ? <span className="pp-shot-live">gerando</span> : null}
+                          {t("project.takeLabel", { n: tk.n })}
+                          <span className="pp-shot-kind">{tk.kind}</span>
+                          {live ? (
+                            <span className="pp-shot-live">{t("project.generatingShot")}</span>
+                          ) : null}
                         </strong>
                         <span className="muted">
-                          {t.session} · {t.duration}s · seed {t.seed}
-                          {ok ? " · pronto" : ""}
+                          {tk.session} · {tk.duration}s · seed {tk.seed}
+                          {ok ? t("project.shotReady") : ""}
                         </span>
                       </div>
                       <span className="pp-shot-chev" aria-hidden>
@@ -507,20 +485,20 @@ export default function ProjectPage({
                     {open ? (
                       <textarea
                         className="pp-shot-prompt"
-                        value={t.prompt}
+                        value={tk.prompt}
                         onChange={(e) => {
                           const next = [...takes];
-                          next[idx] = { ...t, prompt: e.target.value };
+                          next[idx] = { ...tk, prompt: e.target.value };
                           setProject({ ...project, takes: next });
                         }}
                         onBlur={async (e) => {
                           const next = [...takes];
-                          next[idx] = { ...t, prompt: e.target.value };
+                          next[idx] = { ...tk, prompt: e.target.value };
                           await api.patchProject(project.id, { takes: next });
                         }}
                       />
                     ) : (
-                      <p className="pp-shot-preview">{t.prompt}</p>
+                      <p className="pp-shot-preview">{tk.prompt}</p>
                     )}
                   </article>
                 );

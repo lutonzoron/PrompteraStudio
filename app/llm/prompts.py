@@ -9,11 +9,15 @@ Hard rules:
 - 1 clear action per take — do not stack pose changes.
 - Take duration: default 5s, allowed 2–15s. Match prompt timestamps to duration (e.g. 00:00–00:03 on a 3s take).
 - Sparse speech: few <d>[Portuguese] …</d> lines; most takes = ambience + breath/motion only.
+- LANGUAGE (mandatory, same as Continuity skill):
+  - Every take `prompt` field = ENGLISH only for CONTINUITY LOCK, CAST, Spatial, ONE action, camera, lighting, SFX, negatives.
+  - Spoken lines ONLY inside <d>[Portuguese] …</d>. Never write ONE action / Spatial in Portuguese.
+  - title / synopsis / roteiro_md may be Portuguese for humans.
 - Total film length MUST fit within the user's max_duration_sec (sum of take durations ≤ max).
 - Default resolution framing: vertical 544×992 cinematic.
 - Visual style lock from the chosen style MUST appear in every take prompt.
-- No multi-panel character sheets. Pure T2VA Continuity (no reference images).
-- Output Portuguese dialogue when speech is needed; prompts themselves in English with style lock.
+- No multi-panel character sheets. Prefer scene-plate I2VA when available; never dump studio sheets into continues.
+- CONTINUITY LOCK + spatial LEFT/RIGHT/CENTER on every take.
 
 Output JSON with:
 {

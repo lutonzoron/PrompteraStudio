@@ -1,6 +1,7 @@
 import React, { useEffect, useMemo, useState } from "react";
 import { api } from "../api.js";
 import { useConfirm } from "./ConfirmDialog.jsx";
+import { useT } from "../i18n/index.jsx";
 
 function initials(label) {
   return String(label || "?")
@@ -11,6 +12,7 @@ function initials(label) {
 }
 
 export default function StyleGallery({ styles, busy, setBusy, setToast, onChange }) {
+  const t = useT();
   const confirm = useConfirm();
   const [q, setQ] = useState("");
   const [selectedId, setSelectedId] = useState(styles[0]?.id || null);
@@ -47,10 +49,8 @@ export default function StyleGallery({ styles, busy, setBusy, setToast, onChange
     <div className="styles-page">
       <div className="page-head">
         <div>
-          <h1>Estilos</h1>
-          <p>
-            {styles.length} estilo{styles.length === 1 ? "" : "s"} · bible visual Continuity
-          </p>
+          <h1>{t("styles.title")}</h1>
+          <p>{t("styles.subtitle", { count: styles.length })}</p>
         </div>
         <div className="row">
           <button
@@ -62,28 +62,24 @@ export default function StyleGallery({ styles, busy, setBusy, setToast, onChange
               setDesc("");
             }}
           >
-            Novo estilo
+            {t("styles.newStyle")}
           </button>
         </div>
       </div>
 
       <div className="styles-toolbar">
-        <input
-          placeholder="Buscar estilos…"
-          value={q}
-          onChange={(e) => setQ(e.target.value)}
-        />
-        <span className="muted">{filtered.length} visíveis</span>
+        <input placeholder={t("styles.searchPh")} value={q} onChange={(e) => setQ(e.target.value)} />
+        <span className="muted">{t("styles.visible", { n: filtered.length })}</span>
       </div>
 
       <div className="styles-layout">
         <div className="styles-grid">
           {filtered.length === 0 ? (
             <div className="empty-hero" style={{ gridColumn: "1 / -1" }}>
-              <h2>Nenhum estilo</h2>
-              <p>Crie um com IA a partir de uma base existente.</p>
+              <h2>{t("styles.emptyTitle")}</h2>
+              <p>{t("styles.emptyHint")}</p>
               <button type="button" className="primary" onClick={() => setCreating(true)}>
-                Criar estilo
+                {t("styles.createStyle")}
               </button>
             </div>
           ) : (
@@ -101,7 +97,7 @@ export default function StyleGallery({ styles, busy, setBusy, setToast, onChange
                   {initials(s.label)}
                 </div>
                 <strong>{s.label}</strong>
-                <p>{s.bible_hint_pt || "Sem descrição"}</p>
+                <p>{s.bible_hint_pt || t("styles.noDescription")}</p>
               </button>
             ))
           )}
@@ -111,16 +107,14 @@ export default function StyleGallery({ styles, busy, setBusy, setToast, onChange
           {creating ? (
             <>
               <div className="styles-side-head">
-                <h2>Novo estilo</h2>
+                <h2>{t("styles.newStyleTitle")}</h2>
                 <button type="button" className="ghost" onClick={() => setCreating(false)}>
-                  Cancelar
+                  {t("styles.cancel")}
                 </button>
               </div>
-              <p className="muted">
-                A IA adapta a bible a partir de uma base — descreva o look desejado.
-              </p>
+              <p className="muted">{t("styles.adaptHint")}</p>
               <div className="field">
-                <label>Base</label>
+                <label>{t("styles.base")}</label>
                 <select value={base} onChange={(e) => setBase(e.target.value)}>
                   {styles.map((s) => (
                     <option key={s.id} value={s.id}>
@@ -130,18 +124,18 @@ export default function StyleGallery({ styles, busy, setBusy, setToast, onChange
                 </select>
               </div>
               <div className="field">
-                <label>Nome</label>
+                <label>{t("styles.name")}</label>
                 <input
                   value={label}
-                  placeholder="ex. Noir chuva neon"
+                  placeholder={t("styles.namePh")}
                   onChange={(e) => setLabel(e.target.value)}
                 />
               </div>
               <div className="field">
-                <label>Descrição</label>
+                <label>{t("styles.desc")}</label>
                 <textarea
                   value={desc}
-                  placeholder="Paleta, câmera, textura, tom…"
+                  placeholder={t("styles.descPh")}
                   onChange={(e) => setDesc(e.target.value)}
                 />
               </div>
@@ -157,7 +151,7 @@ export default function StyleGallery({ styles, busy, setBusy, setToast, onChange
                       base_style_id: base || null,
                       label: label || null,
                     });
-                    setToast(`Estilo criado: ${s.label}`);
+                    setToast(t("styles.createdToast", { label: s.label }));
                     setDesc("");
                     setLabel("");
                     setCreating(false);
@@ -170,7 +164,7 @@ export default function StyleGallery({ styles, busy, setBusy, setToast, onChange
                   }
                 }}
               >
-                Criar com IA
+                {t("styles.createWithAi")}
               </button>
             </>
           ) : selected ? (
@@ -181,16 +175,16 @@ export default function StyleGallery({ styles, busy, setBusy, setToast, onChange
               <div className="style-detail-mark" aria-hidden>
                 {initials(selected.label)}
               </div>
-              <p className="styles-side-body">{selected.bible_hint_pt || "Sem bible hint."}</p>
+              <p className="styles-side-body">{selected.bible_hint_pt || t("styles.noBible")}</p>
               {selected.craft_rules_en ? (
                 <div className="field">
-                  <label>Craft rules</label>
+                  <label>{t("styles.craftRules")}</label>
                   <pre className="style-pre">{selected.craft_rules_en}</pre>
                 </div>
               ) : null}
               {selected.lock_en ? (
                 <div className="field">
-                  <label>Lock</label>
+                  <label>{t("styles.lock")}</label>
                   <pre className="style-pre">{selected.lock_en}</pre>
                 </div>
               ) : null}
@@ -205,7 +199,7 @@ export default function StyleGallery({ styles, busy, setBusy, setToast, onChange
                     setBusy(true);
                     try {
                       const s = await api.dupStyle(selected.id);
-                      setToast(`Duplicado: ${s.label || selected.label}`);
+                      setToast(t("styles.duplicatedToast", { label: s.label || selected.label }));
                       setSelectedId(s.id || selectedId);
                       onChange();
                     } catch (e) {
@@ -215,7 +209,7 @@ export default function StyleGallery({ styles, busy, setBusy, setToast, onChange
                     }
                   }}
                 >
-                  Duplicar
+                  {t("styles.duplicate")}
                 </button>
                 <button
                   type="button"
@@ -223,16 +217,16 @@ export default function StyleGallery({ styles, busy, setBusy, setToast, onChange
                   disabled={busy}
                   onClick={async () => {
                     const ok = await confirm({
-                      title: "Arquivar estilo",
-                      message: `Arquivar “${selected.label}”?`,
-                      confirmLabel: "Arquivar",
+                      title: t("styles.archiveTitle"),
+                      message: t("styles.archiveMsg", { label: selected.label }),
+                      confirmLabel: t("styles.archive"),
                       danger: true,
                     });
                     if (!ok) return;
                     setBusy(true);
                     try {
                       await api.archiveStyle(selected.id);
-                      setToast("Estilo arquivado");
+                      setToast(t("styles.archivedToast"));
                       setSelectedId(null);
                       onChange();
                     } catch (e) {
@@ -242,12 +236,12 @@ export default function StyleGallery({ styles, busy, setBusy, setToast, onChange
                     }
                   }}
                 >
-                  Arquivar
+                  {t("styles.archive")}
                 </button>
               </div>
             </>
           ) : (
-            <p className="muted">Selecione um estilo na grade.</p>
+            <p className="muted">{t("styles.selectHint")}</p>
           )}
         </aside>
       </div>

@@ -2,6 +2,7 @@ import React, { useEffect, useState } from "react";
 import { api } from "../api.js";
 import { useConfirm } from "./ConfirmDialog.jsx";
 import { initials, isNsfw, posterSrc, statusLabel } from "../utils.js";
+import { useT } from "../i18n/index.jsx";
 
 export default function ProjectDetail({
   project,
@@ -12,6 +13,7 @@ export default function ProjectDetail({
   onRefresh,
   onClose,
 }) {
+  const t = useT();
   const confirm = useConfirm();
   const [estimate, setEstimate] = useState(project?.estimate || null);
   const [posterErr, setPosterErr] = useState(false);
@@ -45,11 +47,15 @@ export default function ProjectDetail({
     <aside className="detail-panel stack">
       <div className="row" style={{ justifyContent: "space-between" }}>
         <div className="row">
-          <span className={`status-pill ${project.status}`}>{statusLabel(project.status)}</span>
-          {nsfw ? <span className="status-pill nsfw">NSFW</span> : <span className="status-pill sfw">SFW</span>}
+          <span className={`status-pill ${project.status}`}>{statusLabel(project.status, t)}</span>
+          {nsfw ? (
+            <span className="status-pill nsfw">NSFW</span>
+          ) : (
+            <span className="status-pill sfw">SFW</span>
+          )}
         </div>
         <button type="button" className="ghost" onClick={onClose}>
-          Fechar
+          {t("common.close")}
         </button>
       </div>
 
@@ -66,15 +72,18 @@ export default function ProjectDetail({
           />
           <div className="row">
             <a className="btn-link" href={masterUrl} download={`${project.slug || "video"}_master.mp4`}>
-              Baixar master
+              {t("project.downloadMaster")}
             </a>
-            <span className="muted">Vídeo final{nsfw ? " · sem capa NSFW" : ""}</span>
+            <span className="muted">
+              {t("project.finalVideoNote")}
+              {nsfw ? t("project.noNsfwCover") : ""}
+            </span>
           </div>
         </div>
       ) : nsfw ? (
         <div className="detail-poster thumb-fallback nsfw-cover" style={{ position: "relative" }}>
           <span className="nsfw-tag">NSFW</span>
-          <span className="nsfw-hint">capa ocultada</span>
+          <span className="nsfw-hint">{t("project.coverHidden")}</span>
         </div>
       ) : !posterErr ? (
         <img
@@ -92,14 +101,14 @@ export default function ProjectDetail({
       <h2 style={{ fontFamily: "var(--display)", margin: 0, fontSize: 22, letterSpacing: "-0.03em" }}>
         {project.title}
       </h2>
-      <p className="muted">{project.synopsis || project.brief || "Sem sinopse"}</p>
+      <p className="muted">{project.synopsis || project.brief || t("project.noSynopsis")}</p>
       <div className="muted">
         {done.size}/{takes.length} takes · {nsfw ? "NSFW" : "SFW"} · {project.review_mode}
-        {masterOk ? " · master pronto" : ""}
+        {masterOk ? ` · ${t("project.masterReady")}` : ""}
       </div>
 
       <div className="field">
-        <label>Modo de revisão</label>
+        <label>{t("project.reviewModeLabel")}</label>
         <select
           value={project.review_mode}
           onChange={async (e) => {
@@ -109,52 +118,50 @@ export default function ProjectDetail({
             setProject(p);
           }}
         >
-          <option value="automatico">Automático</option>
-          <option value="com_revisao">Com revisão take a take</option>
+          <option value="automatico">{t("project.modeAutomatic")}</option>
+          <option value="com_revisao">{t("project.modeReviewOption")}</option>
         </select>
       </div>
 
-      <h3 style={{ margin: "8px 0 0", fontSize: 13, color: "var(--muted)" }}>Shot list</h3>
+      <h3 style={{ margin: "8px 0 0", fontSize: 13, color: "var(--muted)" }}>{t("project.shotList")}</h3>
       <div className="shot-list">
-        {takes.map((t, idx) => (
-          <div key={t.n || idx} className="shot">
+        {takes.map((tk, idx) => (
+          <div key={tk.n || idx} className="shot">
             <header>
               <span>
-                #{t.n} · {t.kind} · {t.session} · {t.duration}s
-                {done.has(Number(t.n)) || done.has(t.n) ? " ✓" : ""}
+                #{tk.n} · {tk.kind} · {tk.session} · {tk.duration}s
+                {done.has(Number(tk.n)) || done.has(tk.n) ? " ✓" : ""}
               </span>
-              <span>seed {t.seed}</span>
+              <span>seed {tk.seed}</span>
             </header>
             <textarea
-              value={t.prompt}
+              value={tk.prompt}
               onChange={(e) => {
                 const next = [...takes];
-                next[idx] = { ...t, prompt: e.target.value };
+                next[idx] = { ...tk, prompt: e.target.value };
                 setProject({ ...project, takes: next });
               }}
               onBlur={async (e) => {
                 const next = [...takes];
-                next[idx] = { ...t, prompt: e.target.value };
+                next[idx] = { ...tk, prompt: e.target.value };
                 await api.patchProject(project.id, { takes: next });
               }}
             />
           </div>
         ))}
-        {takes.length === 0 ? (
-          <p className="muted">Sem takes — gere o roteiro com IA ou via Cursor (pasta inbox).</p>
-        ) : null}
+        {takes.length === 0 ? <p className="muted">{t("project.noTakesInbox")}</p> : null}
       </div>
 
       <div className="cta-bar">
         {isDone ? (
-          <div className="alert good">Fluxo concluído — use o player acima para ver o resultado.</div>
+          <div className="alert good">{t("project.flowDoneDetail")}</div>
         ) : estimate ? (
           <div className="cta-cost">
-            Faltam ~{remaining || takes.length} takes ·{" "}
+            {t("project.costRemaining", { n: remaining || takes.length })}{" "}
             <strong>~{estimate.total_min} min</strong> · <strong>R$ {estimate.cost_brl}</strong>
           </div>
         ) : (
-          <div className="cta-cost">Calculando custo…</div>
+          <div className="cta-cost">{t("project.calculatingCost")}</div>
         )}
         <button
           type="button"
@@ -164,7 +171,7 @@ export default function ProjectDetail({
             setBusy(true);
             try {
               await api.enqueue(project.id);
-              setToast("Na fila de geração");
+              setToast(t("project.queuedToast"));
               onRefresh();
             } catch (e) {
               setToast(String(e.message || e));
@@ -173,7 +180,7 @@ export default function ProjectDetail({
             }
           }}
         >
-          {isDone ? "Gerar de novo" : "Enfileirar geração"}
+          {isDone ? t("project.regenerate") : t("project.enqueue")}
         </button>
         <div className="row">
           <button
@@ -185,7 +192,7 @@ export default function ProjectDetail({
                 const r = await api.generateStory(project.id, { brief: project.brief });
                 setProject(r.project);
                 setEstimate(r.estimate);
-                setToast("Roteiro regenerado");
+                setToast(t("project.scriptRegenerated"));
                 onRefresh();
               } catch (e) {
                 setToast(String(e.message || e));
@@ -194,36 +201,36 @@ export default function ProjectDetail({
               }
             }}
           >
-            Regenerar roteiro
+            {t("project.regenScript")}
           </button>
           {project.status === "archived" ? (
             <button
               type="button"
               onClick={async () => {
                 await api.restoreProject(project.id);
-                setToast("Restaurada");
+                setToast(t("library.restoredToast"));
                 onRefresh();
               }}
             >
-              Restaurar
+              {t("library.restore")}
             </button>
           ) : (
             <button
               type="button"
               onClick={async () => {
                 const ok = await confirm({
-                  title: "Arquivar história",
-                  message: "Arquivar esta história? Você pode restaurar depois.",
-                  confirmLabel: "Arquivar",
+                  title: t("project.archiveTitle"),
+                  message: t("project.archiveMsg"),
+                  confirmLabel: t("project.archive"),
                 });
                 if (!ok) return;
                 await api.deleteProject(project.id, false);
-                setToast("Arquivada");
+                setToast(t("library.archivedToast"));
                 onClose();
                 onRefresh();
               }}
             >
-              Arquivar
+              {t("project.archive")}
             </button>
           )}
           <button
@@ -231,20 +238,19 @@ export default function ProjectDetail({
             className="danger"
             onClick={async () => {
               const ok = await confirm({
-                title: "Excluir permanentemente",
-                message:
-                  "Excluir esta história?\nApaga o projeto e os arquivos locais. Não dá para desfazer.",
-                confirmLabel: "Excluir",
+                title: t("project.deleteTitle"),
+                message: t("project.deleteMsg"),
+                confirmLabel: t("common.delete"),
                 danger: true,
               });
               if (!ok) return;
               await api.deleteProject(project.id, true);
-              setToast("Excluída");
+              setToast(t("library.deletedToast"));
               onClose();
               onRefresh();
             }}
           >
-            Excluir
+            {t("project.delete")}
           </button>
         </div>
       </div>

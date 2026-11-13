@@ -1,29 +1,9 @@
-import React, { useState } from "react";
+import React, { useMemo, useState } from "react";
 import { api } from "../api.js";
 import ContextMenu from "./ContextMenu.jsx";
 import { useConfirm } from "./ConfirmDialog.jsx";
 import { cleanTitle, fmtDate, initials, isNsfw, posterSrc, statusLabel } from "../utils.js";
-
-const FILTERS = [
-  ["all", "Todas"],
-  ["draft", "Rascunho"],
-  ["queued", "Na fila"],
-  ["active", "Gerando"],
-  ["done", "Prontas"],
-  ["failed", "Falhas"],
-  ["nsfw", "NSFW"],
-  ["sfw", "SFW"],
-];
-
-const SORTS = [
-  ["updated_desc", "Mais recentes"],
-  ["updated_asc", "Mais antigos"],
-  ["title_asc", "Título A–Z"],
-  ["title_desc", "Título Z–A"],
-  ["status", "Por status"],
-  ["progress_desc", "Mais avançados"],
-  ["nsfw_first", "NSFW primeiro"],
-];
+import { useLocale, useT } from "../i18n/index.jsx";
 
 const STATUS_RANK = {
   generating: 0,
@@ -36,7 +16,7 @@ const STATUS_RANK = {
   archived: 7,
 };
 
-function sortProjects(list, sort) {
+function sortProjects(list, sort, collatorLocale) {
   const arr = [...list];
   const titleOf = (p) => cleanTitle(p.title || p.slug || "").toLowerCase();
   const progOf = (p) => {
@@ -49,9 +29,9 @@ function sortProjects(list, sort) {
       case "updated_asc":
         return (a.updated_at || 0) - (b.updated_at || 0);
       case "title_asc":
-        return titleOf(a).localeCompare(titleOf(b), "pt");
+        return titleOf(a).localeCompare(titleOf(b), collatorLocale);
       case "title_desc":
-        return titleOf(b).localeCompare(titleOf(a), "pt");
+        return titleOf(b).localeCompare(titleOf(a), collatorLocale);
       case "status": {
         const ra = STATUS_RANK[a.status] ?? 50;
         const rb = STATUS_RANK[b.status] ?? 50;
@@ -77,51 +57,51 @@ function sortProjects(list, sort) {
   return arr;
 }
 
-function menuItemsFor(p) {
+function menuItemsFor(p, t) {
   const archived = p.status === "archived";
   const hasTakes = (p.takes || []).length > 0;
   const items = [
-    { id: "open", label: "Abrir" },
+    { id: "open", label: t("library.open") },
     {
       id: "enqueue",
-      label: "Colocar na fila",
+      label: t("library.enqueue"),
       disabled: archived || !hasTakes,
     },
   ];
   if (p.has_master) {
-    items.push({ id: "download", label: "Baixar master" });
+    items.push({ id: "download", label: t("library.downloadMaster") });
   }
   items.push({ sep: true });
   items.push({
     id: "review_auto",
-    label: "Revisão: automático",
+    label: t("library.reviewAuto"),
     disabled: archived,
   });
   items.push({
     id: "review_manual",
-    label: "Revisão: take a take",
+    label: t("library.reviewManual"),
     disabled: archived,
   });
   items.push({ sep: true });
-  items.push({ id: "copy_title", label: "Copiar título" });
-  items.push({ id: "copy_slug", label: "Copiar slug" });
+  items.push({ id: "copy_title", label: t("library.copyTitle") });
+  items.push({ id: "copy_slug", label: t("library.copySlug") });
   items.push({ sep: true });
   if (archived) {
-    items.push({ id: "restore", label: "Restaurar" });
+    items.push({ id: "restore", label: t("library.restore") });
   } else {
-    items.push({ id: "archive", label: "Arquivar" });
+    items.push({ id: "archive", label: t("common.archive") });
   }
-  items.push({ id: "delete", label: "Excluir permanente", danger: true });
+  items.push({ id: "delete", label: t("library.deletePermanent"), danger: true });
   return items;
 }
 
-function Poster({ project }) {
+function Poster({ project, t }) {
   const [err, setErr] = useState(false);
   if (isNsfw(project)) {
     return (
       <div className="thumb-fallback nsfw-cover">
         <span className="nsfw-tag">NSFW</span>
-        <span className="nsfw-hint">sem capa</span>
+        <span className="nsfw-hint">{t("library.noCover")}</span>
       </div>
     );
   }
@@ -149,6 +129,8 @@ export default function Library({
   onRefresh,
   setToast,
 }) {
+  const t = useT();
+  const { locale, dateLocale } = useLocale();
   const confirm = useConfirm();
   const [filter, setFilter] = useState("all");
   const [q, setQ] = useState("");
@@ -160,6 +142,37 @@ export default function Library({
       return "updated_desc";
     }
   });
+
+  const collatorLocale = locale === "pt" ? "pt" : "en";
+
+  const filters = useMemo(
+    () => [
+      ["all", t("library.filterAll")],
+      ["draft", t("library.filterDraft")],
+      ["queued", t("library.filterQueued")],
+      ["active", t("library.filterActive")],
+      ["done", t("library.filterDone")],
+      ["failed", t("library.filterFailed")],
+      ["nsfw", t("library.filterNsfw")],
+      ["sfw", t("library.filterSfw")],
+    ],
+    [t]
+  );
+
+  const sorts = useMemo(
+    () => [
+      ["updated_desc", t("library.sortRecent")],
+      ["updated_asc", t("library.sortOldest")],
+      ["title_asc", t("library.sortTitleAsc")],
+      ["title_desc", t("library.sortTitleDesc")],
+      ["status", t("library.sortStatus")],
+      ["progress_desc", t("library.sortProgress")],
+      ["nsfw_first", t("library.sortNsfwFirst")],
+    ],
+    [t]
+  );
+
+  const archivedCount = projects.filter((p) => p.status === "archived").length;
 
   const filtered = sortProjects(
     projects.filter((p) => {
@@ -180,7 +193,8 @@ export default function Library({
       }
       return true;
     }),
-    sort
+    sort,
+    collatorLocale
   );
 
   async function runAction(actionId, p) {
@@ -191,7 +205,7 @@ export default function Library({
       }
       if (actionId === "enqueue") {
         await api.enqueue(p.id);
-        setToast?.("Na fila de geração");
+        setToast?.(t("library.queuedToast"));
         onRefresh?.();
         return;
       }
@@ -204,54 +218,54 @@ export default function Library({
       }
       if (actionId === "review_auto") {
         await api.patchProject(p.id, { review_mode: "automatico" });
-        setToast?.("Revisão automática");
+        setToast?.(t("library.reviewAutoToast"));
         onRefresh?.();
         return;
       }
       if (actionId === "review_manual") {
         await api.patchProject(p.id, { review_mode: "com_revisao" });
-        setToast?.("Revisão take a take");
+        setToast?.(t("library.reviewManualToast"));
         onRefresh?.();
         return;
       }
       if (actionId === "copy_title") {
         await navigator.clipboard.writeText(cleanTitle(p.title));
-        setToast?.("Título copiado");
+        setToast?.(t("library.titleCopied"));
         return;
       }
       if (actionId === "copy_slug") {
         await navigator.clipboard.writeText(p.slug || p.id);
-        setToast?.("Slug copiado");
+        setToast?.(t("library.slugCopied"));
         return;
       }
       if (actionId === "archive") {
         const ok = await confirm({
-          title: "Arquivar história",
-          message: `Arquivar “${cleanTitle(p.title)}”? Você pode restaurar depois.`,
-          confirmLabel: "Arquivar",
+          title: t("library.archiveTitle"),
+          message: t("library.archiveMsg", { title: cleanTitle(p.title) }),
+          confirmLabel: t("common.archive"),
         });
         if (!ok) return;
         await api.deleteProject(p.id, false);
-        setToast?.("Arquivada");
+        setToast?.(t("library.archivedToast"));
         onRefresh?.();
         return;
       }
       if (actionId === "delete") {
         const ok = await confirm({
-          title: "Excluir permanentemente",
-          message: `Excluir “${cleanTitle(p.title)}”?\nIsso apaga o projeto e os arquivos locais. Não dá para desfazer.`,
-          confirmLabel: "Excluir",
+          title: t("library.deleteTitle"),
+          message: t("library.deleteMsg", { title: cleanTitle(p.title) }),
+          confirmLabel: t("common.delete"),
           danger: true,
         });
         if (!ok) return;
         await api.deleteProject(p.id, true);
-        setToast?.("Excluída");
+        setToast?.(t("library.deletedToast"));
         onRefresh?.();
         return;
       }
       if (actionId === "restore") {
         await api.restoreProject(p.id);
-        setToast?.("Restaurada");
+        setToast?.(t("library.restoredToast"));
         onRefresh?.();
       }
     } catch (e) {
@@ -260,30 +274,27 @@ export default function Library({
   }
 
   return (
-    <div onContextMenu={(e) => {
-      // keep native menu only outside cards
-      if (!e.target.closest?.(".proj-card")) return;
-      e.preventDefault();
-    }}>
+    <div
+      onContextMenu={(e) => {
+        if (!e.target.closest?.(".proj-card")) return;
+        e.preventDefault();
+      }}
+    >
       <div className="page-head">
         <div>
-          <h1>Studio</h1>
-          <p>{projects.length} histórias · Continuity H3 local</p>
+          <h1>{t("library.title")}</h1>
+          <p>{t("library.subtitle", { count: projects.length })}</p>
         </div>
         <div className="row">
           <button type="button" className="primary" onClick={onCreate}>
-            Nova história
+            {t("nav.newStory")}
           </button>
         </div>
       </div>
 
       <div className="filters">
-        <input
-          placeholder="Buscar…"
-          value={q}
-          onChange={(e) => setQ(e.target.value)}
-        />
-        {FILTERS.map(([id, label]) => (
+        <input placeholder={t("library.searchPh")} value={q} onChange={(e) => setQ(e.target.value)} />
+        {filters.map(([id, label]) => (
           <button
             key={id}
             type="button"
@@ -297,13 +308,13 @@ export default function Library({
           type="button"
           className={`chip chip-archive ${showArchived ? "active" : ""}`}
           aria-pressed={showArchived}
-          title={showArchived ? "Ocultar arquivadas" : "Mostrar arquivadas"}
+          title={showArchived ? t("library.hideArchived") : t("library.showArchived")}
           onClick={() => setShowArchived(!showArchived)}
         >
-          {showArchived ? "Arquivadas · on" : "Arquivadas"}
+          {showArchived ? t("library.archivedOn") : t("library.filterArchived")}
         </button>
         <label className="sort-field">
-          <span>Ordenar</span>
+          <span>{t("library.sortLabel")}</span>
           <select
             value={sort}
             onChange={(e) => {
@@ -314,7 +325,7 @@ export default function Library({
               } catch {}
             }}
           >
-            {SORTS.map(([id, label]) => (
+            {sorts.map(([id, label]) => (
               <option key={id} value={id}>
                 {label}
               </option>
@@ -326,33 +337,31 @@ export default function Library({
       {showArchived ? (
         <div className="archive-banner">
           <span>
-            Exibindo arquivadas junto com as ativas
-            {projects.some((p) => p.status === "archived")
-              ? ` · ${projects.filter((p) => p.status === "archived").length} arquivada(s)`
-              : " · nenhuma arquivada ainda"}
+            {t("library.archiveBanner")}
+            {archivedCount > 0
+              ? t("library.archiveBannerCount", { n: archivedCount })
+              : t("library.archiveBannerNone")}
           </span>
           <button type="button" className="ghost" onClick={() => setShowArchived(false)}>
-            Ocultar
+            {t("library.hide")}
           </button>
         </div>
       ) : null}
 
       {filtered.length === 0 ? (
         <div className="empty-hero">
-          <h2>Nada por aqui</h2>
+          <h2>{t("library.emptyTitle")}</h2>
           <p>
-            {showArchived
-              ? "Nenhuma história neste filtro (incluindo arquivadas)."
-              : "Crie uma história para começar o fluxo Continuity."}
+            {showArchived ? t("library.emptyFilterArchived") : t("library.emptyStart")}
           </p>
           <div className="row" style={{ justifyContent: "center" }}>
             {showArchived ? (
               <button type="button" onClick={() => setShowArchived(false)}>
-                Voltar às ativas
+                {t("library.backActive")}
               </button>
             ) : (
               <button type="button" className="primary" onClick={onCreate}>
-                Criar agora
+                {t("library.createNow")}
               </button>
             )}
           </div>
@@ -377,10 +386,10 @@ export default function Library({
                   setMenu({ x: e.clientX, y: e.clientY, project: p });
                 }}
               >
-                <Poster project={p} />
+                <Poster project={p} t={t} />
                 <div className="scrim" />
                 <div className="top-badges">
-                  <span className={`status-pill ${p.status}`}>{statusLabel(p.status)}</span>
+                  <span className={`status-pill ${p.status}`}>{statusLabel(p.status, t)}</span>
                   {isNsfw(p) ? (
                     <span className="status-pill nsfw">NSFW</span>
                   ) : (
@@ -390,14 +399,14 @@ export default function Library({
                 <div className="meta">
                   <strong>{cleanTitle(p.title)}</strong>
                   <div className="muted" style={{ fontSize: 11 }}>
-                    {prog.completed}/{total || "—"} takes
-                    {p.has_master ? " · master" : ""}
+                    {t("library.takesMeta", { done: prog.completed, total: total || "—" })}
+                    {p.has_master ? t("library.masterBadge") : ""}
                   </div>
                   <div className="progress">
                     <i style={{ width: `${pct}%` }} />
                   </div>
                   <div className="muted" style={{ fontSize: 10 }}>
-                    {fmtDate(p.updated_at)}
+                    {fmtDate(p.updated_at, dateLocale)}
                   </div>
                 </div>
               </button>
@@ -410,7 +419,7 @@ export default function Library({
         <ContextMenu
           x={menu.x}
           y={menu.y}
-          items={menuItemsFor(menu.project)}
+          items={menuItemsFor(menu.project, t)}
           onClose={() => setMenu(null)}
           onPick={(id) => runAction(id, menu.project)}
         />

@@ -3,6 +3,7 @@ import { api } from "../api.js";
 import ContextMenu from "./ContextMenu.jsx";
 import { useConfirm } from "./ConfirmDialog.jsx";
 import { cleanTitle, initials, isNsfw, posterSrc, statusLabel } from "../utils.js";
+import { useT } from "../i18n/index.jsx";
 
 function QueueThumb({ project }) {
   const [err, setErr] = useState(false);
@@ -46,21 +47,24 @@ function IconBtn({ title, onClick, danger, children, disabled }) {
   );
 }
 
-function waitingStatusLine(p, comfyQ) {
+function waitingStatusLine(p, comfyQ, t) {
   const pendingSlugs = (comfyQ?.pending_items || []).map((x) => x?.slug).filter(Boolean);
   const onComfy = pendingSlugs.includes(p.slug);
   if (onComfy) {
-    return p.current_take ? `Na fila do Comfy · take ${p.current_take}` : "Na fila do Comfy";
+    return p.current_take
+      ? t("queue.comfyWaitingTake", { n: p.current_take })
+      : t("queue.comfyWaiting");
   }
   if (p.external) {
-    if (p.stats?.waiting_for) return `Espera ${p.stats.waiting_for}`;
-    if (p.current_take) return `Aguardando · take ${p.current_take}`;
-    return "Externo · aguardando";
+    if (p.stats?.waiting_for) return t("queue.externalWait", { for: p.stats.waiting_for });
+    if (p.current_take) return t("queue.waitingTake", { take: p.current_take });
+    return t("queue.externalWaiting");
   }
-  return statusLabel(p.status);
+  return statusLabel(p.status, t);
 }
 
 export default function QueueDock({ queue, onOpenReview, onRefresh, setToast, onOpenProject }) {
+  const t = useT();
   const confirm = useConfirm();
   const [open, setOpen] = useState(true);
   const [menu, setMenu] = useState(null);
@@ -113,9 +117,13 @@ export default function QueueDock({ queue, onOpenReview, onRefresh, setToast, on
   const nowDone = now?.completed ?? generating?.progress?.completed ?? 0;
   const nowTotal = now?.total ?? generating?.progress?.total ?? 0;
   const nowTitle = cleanTitle(now?.title || generating?.title || "");
-  const nowMsg =
+  const displayNowMsg =
     now?.message ||
-    (nowTake ? `Take ${nowTake}${nowTotal ? `/${nowTotal}` : ""}` : "Gerando…");
+    (nowTake
+      ? nowTotal
+        ? t("queue.takeOf", { n: nowTake, total: nowTotal })
+        : t("queue.takeOnly", { n: nowTake })
+      : t("queue.generatingEllipsis"));
 
   async function run(fn, okMsg) {
     setBusy(true);
@@ -131,10 +139,7 @@ export default function QueueDock({ queue, onOpenReview, onRefresh, setToast, on
   }
 
   async function persistOrder(nextWaiting) {
-    const ids = [
-      ...(generating ? [generating.id] : []),
-      ...nextWaiting.map((p) => p.id),
-    ];
+    const ids = [...(generating ? [generating.id] : []), ...nextWaiting.map((p) => p.id)];
     await api.reorder(ids);
   }
 
@@ -154,7 +159,7 @@ export default function QueueDock({ queue, onOpenReview, onRefresh, setToast, on
     setBusy(true);
     try {
       await persistOrder(next);
-      setToast("Ordem da fila atualizada");
+      setToast(t("queue.reorderToast"));
       onRefresh();
     } catch (e) {
       setToast(String(e.message || e));
@@ -164,45 +169,59 @@ export default function QueueDock({ queue, onOpenReview, onRefresh, setToast, on
     }
   }
 
+  const menuItems = useMemo(
+    () => (project) => [
+      { id: "open", label: t("queue.openProject") },
+      ...(project?.external
+        ? [{ id: "sync", label: t("queue.sync") }]
+        : [{ id: "resume", label: t("queue.resumeQueue") }]),
+      { id: "dequeue", label: t("queue.dequeue") },
+      { sep: true },
+      { id: "archive", label: t("queue.archive") },
+      { id: "delete", label: t("queue.deletePermanent"), danger: true },
+    ],
+    [t]
+  );
+
   async function runQueueAction(id, p) {
     try {
       if (id === "open" && onOpenProject) onOpenProject(p.id);
       if (id === "archive") {
         const ok = await confirm({
-          title: "Arquivar história",
-          message: `Arquivar “${cleanTitle(p.title)}”? Você pode restaurar depois.`,
-          confirmLabel: "Arquivar",
+          title: t("queue.archiveTitle"),
+          message: t("queue.archiveMsg", { title: cleanTitle(p.title) }),
+          confirmLabel: t("queue.archive"),
         });
         if (!ok) return;
         await api.deleteProject(p.id, false);
-        setToast("Arquivada");
+        setToast(t("queue.archivedToast"));
         onRefresh();
       }
       if (id === "delete") {
         const ok = await confirm({
-          title: "Excluir permanentemente",
-          message: `Excluir “${cleanTitle(p.title)}”?\nApaga o projeto e os arquivos locais. Não dá para desfazer.`,
-          confirmLabel: "Excluir",
+          title: t("queue.deleteTitle"),
+          message: t("queue.deleteMsg", { title: cleanTitle(p.title) }),
+          confirmLabel: t("common.delete"),
           danger: true,
         });
         if (!ok) return;
         await api.deleteProject(p.id, true);
-        setToast("Excluída");
+        setToast(t("queue.deletedToast"));
         onRefresh();
       }
       if (id === "dequeue") {
         await api.dequeue(p.id);
-        setToast("Removido da fila");
+        setToast(t("queue.dequeueToast"));
         onRefresh();
       }
       if (id === "resume") {
         await api.resume();
-        setToast("Fila interna retomada");
+        setToast(t("queue.resumeInternalToast"));
         onRefresh();
       }
       if (id === "sync") {
         await api.externalSync();
-        setToast("Sync externo");
+        setToast(t("queue.syncExternalToast"));
         onRefresh();
       }
     } catch (e) {
@@ -210,11 +229,22 @@ export default function QueueDock({ queue, onOpenReview, onRefresh, setToast, on
     }
   }
 
+  let comfyLine = null;
+  if (comfyQ) {
+    if (comfyQ.online) {
+      comfyLine = comfyQ.busy
+        ? t("queue.comfyRun", { running: comfyQ.running, pending: comfyQ.pending })
+        : t("queue.comfyIdle");
+    } else {
+      comfyLine = t("queue.comfyOffline");
+    }
+  }
+
   return (
     <div className={`queue-dock ${open ? "" : "collapsed"}`}>
       <div className="queue-dock-head" onClick={() => setOpen((v) => !v)}>
         <div className="row">
-          <strong style={{ fontSize: 13 }}>Render queue</strong>
+          <strong style={{ fontSize: 13 }}>{t("queue.title")}</strong>
           {badgeCount > 0 ? <span className="badge">{badgeCount}</span> : null}
           {pending.length > 0 ? <span className="badge warn">{pending.length}</span> : null}
         </div>
@@ -224,44 +254,41 @@ export default function QueueDock({ queue, onOpenReview, onRefresh, setToast, on
         <div className="queue-dock-body stack">
           <div className="row q-meta-row">
             <div className="muted" style={{ fontSize: 11 }}>
-              {comfyQ
-                ? comfyQ.online
-                  ? comfyQ.busy
-                    ? `Comfy · ${comfyQ.running} run · ${comfyQ.pending} fila`
-                    : "Comfy · ocioso"
-                  : "Comfy · offline"
-                : null}
+              {comfyLine}
             </div>
             <div className="q-toolbar">
               {externalOnly || hasExternal ? (
                 <IconBtn
-                  title="Sincronizar"
+                  title={t("queue.sync")}
                   disabled={busy}
-                  onClick={() => run(() => api.externalSync(), "Sync ok")}
+                  onClick={() => run(() => api.externalSync(), t("queue.syncOk"))}
                 >
                   ↻
                 </IconBtn>
               ) : null}
               {hasPaused || (!active && !external && !now && !externalOnly) ? (
                 <IconBtn
-                  title="Retomar fila interna"
+                  title={t("queue.resumeInternal")}
                   disabled={busy}
-                  onClick={() => run(() => api.resume(), "Retomado")}
+                  onClick={() => run(() => api.resume(), t("queue.resumed"))}
                 >
                   ▶
                 </IconBtn>
               ) : (
                 <IconBtn
-                  title={externalOnly ? "Pausar Comfy (interrupt)" : "Pausar fila"}
+                  title={externalOnly ? t("queue.pauseComfy") : t("queue.pauseQueue")}
                   disabled={busy}
                   onClick={() =>
-                    run(async () => {
-                      if (externalOnly || hasExternal) {
-                        await api.comfyInterrupt();
-                      } else {
-                        await api.pause();
-                      }
-                    }, externalOnly || hasExternal ? "Comfy interrompido" : "Pausado")
+                    run(
+                      async () => {
+                        if (externalOnly || hasExternal) {
+                          await api.comfyInterrupt();
+                        } else {
+                          await api.pause();
+                        }
+                      },
+                      externalOnly || hasExternal ? t("queue.comfyInterrupted") : t("queue.pausedToast")
+                    )
                   }
                 >
                   ❚❚
@@ -272,7 +299,7 @@ export default function QueueDock({ queue, onOpenReview, onRefresh, setToast, on
 
           {generating || now ? (
             <section className="q-section">
-              <div className="q-section-label">Geração atual</div>
+              <div className="q-section-label">{t("queue.currentGen")}</div>
               <div
                 className="q-now"
                 onDoubleClick={() => generating && onOpenProject?.(generating.id)}
@@ -285,10 +312,10 @@ export default function QueueDock({ queue, onOpenReview, onRefresh, setToast, on
                 {generating ? <QueueThumb project={generating} /> : <div className="queue-thumb" />}
                 <div className="q-now-main">
                   <div className="q-now-top">
-                    <strong>{nowTitle || "Gerando"}</strong>
-                    <span className="q-live-pill">AO VIVO</span>
+                    <strong>{nowTitle || t("queue.generating")}</strong>
+                    <span className="q-live-pill">{t("queue.live")}</span>
                   </div>
-                  <div className="q-now-msg">{nowMsg}</div>
+                  <div className="q-now-msg">{displayNowMsg}</div>
                   <div className="q-now-progress-row">
                     <div className="progress q-now-progress">
                       <i style={{ width: `${Math.max(2, Math.min(100, nowPct))}%` }} />
@@ -297,14 +324,14 @@ export default function QueueDock({ queue, onOpenReview, onRefresh, setToast, on
                   </div>
                   <div className="muted" style={{ fontSize: 11 }}>
                     {nowTotal
-                      ? `${nowDone}/${nowTotal} takes`
+                      ? t("library.takesMeta", { done: nowDone, total: nowTotal })
                       : generating?.external
-                        ? "Runner externo"
-                        : "Worker interno"}
+                        ? t("queue.externalRunner")
+                        : t("queue.internalWorker")}
                     {now?.source === "external" || generating?.external
-                      ? " · externo"
+                      ? t("queue.tagExternal")
                       : now || generating
-                        ? " · interno"
+                        ? t("queue.tagInternal")
                         : ""}
                   </div>
                 </div>
@@ -312,21 +339,21 @@ export default function QueueDock({ queue, onOpenReview, onRefresh, setToast, on
                   <div className="queue-item-actions">
                     {generating.external ? (
                       <IconBtn
-                        title="Sincronizar"
+                        title={t("queue.sync")}
                         disabled={busy}
-                        onClick={() => run(() => api.externalSync(), "Sync ok")}
+                        onClick={() => run(() => api.externalSync(), t("queue.syncOk"))}
                       >
                         ↻
                       </IconBtn>
                     ) : null}
                     <IconBtn
-                      title="Tirar da fila"
+                      title={t("queue.dequeue")}
                       danger
                       disabled={busy}
                       onClick={() =>
                         run(async () => {
                           await api.dequeue(generating.id);
-                        }, "Removido da fila")
+                        }, t("queue.dequeueToast"))
                       }
                     >
                       ✕
@@ -336,10 +363,10 @@ export default function QueueDock({ queue, onOpenReview, onRefresh, setToast, on
               </div>
             </section>
           ) : hasPaused ? (
-            <div className="muted">Fila pausada</div>
+            <div className="muted">{t("queue.queuePaused")}</div>
           ) : (
             <div className="muted" style={{ fontSize: 12 }}>
-              {items.length ? "Nada gerando agora — aguardando…" : "Nenhum job ativo"}
+              {items.length ? t("queue.idleWaiting") : t("queue.noActiveJob")}
             </div>
           )}
 
@@ -347,7 +374,7 @@ export default function QueueDock({ queue, onOpenReview, onRefresh, setToast, on
             <div className="q-eta stack">
               {estimate.current ? (
                 <div className="q-eta-current">
-                  Take {estimate.current.take || "—"} ≈{" "}
+                  {t("queue.takeEta", { take: estimate.current.take || "—" })}{" "}
                   <strong>{estimate.current.min} min</strong>
                   {estimate.current.finish_at ? (
                     <span className="muted"> · ~{estimate.current.finish_at}</span>
@@ -360,18 +387,18 @@ export default function QueueDock({ queue, onOpenReview, onRefresh, setToast, on
                 </div>
               ) : null}
               <div className="cta-cost" style={{ margin: 0 }}>
-                Fila ≈ <strong>{estimate.total_min} min</strong>
+                {t("queue.queueEta")} <strong>{estimate.total_min} min</strong>
                 {estimate.finish_at ? (
                   <>
                     {" "}
-                    · termina ~<strong>{estimate.finish_at}</strong>
+                    · {t("queue.finishes")}
+                    <strong>{estimate.finish_at}</strong>
                   </>
-                ) : null}
-                {" "}
+                ) : null}{" "}
                 · R$ {estimate.cost_brl}
                 <div className="muted" style={{ fontSize: 10, marginTop: 2 }}>
-                  {estimate.take_count} takes · {Math.round(estimate.sec_per_take / 60)} min/take ·{" "}
-                  {estimate.source || "estimativa"}
+                  {estimate.take_count} takes · {Math.round(estimate.sec_per_take / 60)}{" "}
+                  {t("queue.takeMin")} · {estimate.source || t("queue.estimateSource")}
                 </div>
               </div>
             </div>
@@ -379,13 +406,15 @@ export default function QueueDock({ queue, onOpenReview, onRefresh, setToast, on
 
           {pending.length > 0 ? (
             <section className="q-section">
-              <div className="q-section-label">Revisão</div>
+              <div className="q-section-label">{t("queue.reviewSection")}</div>
               {pending.map((p) => (
                 <div key={`rev-${p.id}`} className="queue-item">
                   <QueueThumb project={p} />
                   <div>
                     <strong style={{ fontSize: 13 }}>{cleanTitle(p.title)}</strong>
-                    <div className="muted">Take {p.review_take} aguardando</div>
+                    <div className="muted">
+                      {t("queue.takeWaiting", { take: p.review_take })}
+                    </div>
                   </div>
                   <button
                     type="button"
@@ -401,7 +430,7 @@ export default function QueueDock({ queue, onOpenReview, onRefresh, setToast, on
                       })
                     }
                   >
-                    Revisar
+                    {t("queue.reviewBtn")}
                   </button>
                 </div>
               ))}
@@ -411,7 +440,10 @@ export default function QueueDock({ queue, onOpenReview, onRefresh, setToast, on
           {waiting.length > 0 ? (
             <section className="q-section">
               <div className="q-section-label">
-                Na fila <span className="muted">· {waiting.length} · arraste para reordenar</span>
+                {t("queue.waiting")}{" "}
+                <span className="muted">
+                  {t("queue.waitingHint", { n: waiting.length })}
+                </span>
               </div>
               {waiting.map((p, idx) => (
                 <div
@@ -456,14 +488,14 @@ export default function QueueDock({ queue, onOpenReview, onRefresh, setToast, on
                   }}
                   onDoubleClick={() => onOpenProject?.(p.id)}
                 >
-                  <span className="q-drag-handle" title="Arrastar" aria-hidden>
+                  <span className="q-drag-handle" title={t("queue.dragHandle")} aria-hidden>
                     ⋮⋮
                   </span>
                   <QueueThumb project={p} />
                   <div className="queue-item-main">
                     <strong style={{ fontSize: 13 }}>{cleanTitle(p.title)}</strong>
                     <div className="muted">
-                      {waitingStatusLine(p, comfyQ)}
+                      {waitingStatusLine(p, comfyQ, t)}
                       {" · "}
                       {p.progress
                         ? `${p.progress.completed}/${p.progress.total}`
@@ -485,21 +517,21 @@ export default function QueueDock({ queue, onOpenReview, onRefresh, setToast, on
                   <div className="queue-item-actions">
                     {p.external ? (
                       <IconBtn
-                        title="Sincronizar"
+                        title={t("queue.sync")}
                         disabled={busy}
-                        onClick={() => run(() => api.externalSync(), "Sync ok")}
+                        onClick={() => run(() => api.externalSync(), t("queue.syncOk"))}
                       >
                         ↻
                       </IconBtn>
                     ) : null}
                     <IconBtn
-                      title="Tirar da fila"
+                      title={t("queue.dequeue")}
                       danger
                       disabled={busy}
                       onClick={() =>
                         run(async () => {
                           await api.dequeue(p.id);
-                        }, "Removido da fila")
+                        }, t("queue.dequeueToast"))
                       }
                     >
                       ✕
@@ -513,7 +545,7 @@ export default function QueueDock({ queue, onOpenReview, onRefresh, setToast, on
 
           {items.length === 0 && pending.length === 0 ? (
             <p className="muted" style={{ margin: 0 }}>
-              Fila vazia — enfileire uma história.
+              {t("queue.emptyHintEnqueue")}
             </p>
           ) : null}
         </div>
@@ -523,16 +555,7 @@ export default function QueueDock({ queue, onOpenReview, onRefresh, setToast, on
         <ContextMenu
           x={menu.x}
           y={menu.y}
-          items={[
-            { id: "open", label: "Abrir projeto" },
-            ...(menu.project?.external
-              ? [{ id: "sync", label: "Sincronizar" }]
-              : [{ id: "resume", label: "Retomar fila" }]),
-            { id: "dequeue", label: "Tirar da fila" },
-            { sep: true },
-            { id: "archive", label: "Arquivar" },
-            { id: "delete", label: "Excluir permanente", danger: true },
-          ]}
+          items={menuItems(menu.project)}
           onClose={() => setMenu(null)}
           onPick={(id) => runQueueAction(id, menu.project)}
         />

@@ -40,7 +40,8 @@ MODELS_SFW = {
     "vae_a": "minimax_h3_audio_vae_fp32.safetensors",
 }
 MODELS_NSFW = {
-    "unet": "MINIMAXH3/10Eros_Max_SingularityV2_PRISM2_PikaFlex_0.85_int8HQ.safetensors",
+    # Windows ComfyUI lists nested UNET paths with backslashes
+    "unet": r"MINIMAXH3\10Eros_Max_SingularityV2_PRISM2_PikaFlex_0.85_int8HQ.safetensors",
     "clip": "minimaxH3_qwen3vl_32b_h3_ultra_uncensored_heretic_int8_convrot.safetensors",
     "vae_v": "minimax_h3_video_vae_fp16.safetensors",
     "vae_a": "minimax_h3_audio_vae_fp32.safetensors",
