@@ -1,44 +1,23 @@
-# Cursor → Promptera (sem API OpenAI no app)
+# Cursor → Promptera Inbox
 
-## Papéis
+Full agent spec (any AI): **[AI_STORY_INBOX.md](AI_STORY_INBOX.md)**
 
-| Quem | Faz |
-|------|-----|
-| **Cursor** | Escreve roteiro + `takes.json` (regras Continuity da skill) |
-| **Promptera** | Importa da pasta inbox, fila GPU, revisão, concat |
+## Quick drop
 
-## Pasta de drop
-
-```
-C:\Projetos\Promptera-Studio\data\inbox\<slug>\
-  meta.json      # opcional
-  takes.json     # obrigatório
-  roteiro.md     # opcional
+```text
+data/inbox/<slug>/
+  takes.json   # required
+  meta.json    # optional
+  roteiro.md   # optional
 ```
 
-O app importa sozinho (~5s) e move para `data/inbox/_processed/`.
+Promptera imports automatically (~5s) or via UI **Inbox → Escanear agora**.
 
-### meta.json
+## Roles
 
-```json
-{
-  "title": "Título da história",
-  "slug": "meu_slug",
-  "brief": "resumo",
-  "model_pack": "sfw",
-  "review_mode": "automatico",
-  "enqueue": false
-}
-```
+| Who | Does |
+|-----|------|
+| Cursor / Claude / Copilot / … | Writes Continuity `takes.json` (+ optional roteiro) |
+| Promptera | Imports, queue, GPU Continuity, review, master |
 
-`model_pack`: `sfw` | `nsfw`  
-`review_mode`: `automatico` | `com_revisao`
-
-## Checklist do agente Cursor
-
-1. Seguir skill `comfyui-h3-continuity` (NEW/CONTINUE, 1 ação/take, duração 2–15s)
-2. Emitir `takes.json` no schema da skill
-3. Criar pasta em `data/inbox/<slug>/` com os arquivos
-4. Avisar o usuário: “já está no inbox — abra o Promptera e enfileire”
-
-Não precisa chamar ChatGPT API pelo app.
+No OpenAI key is required in the app if the story pack is written by an external agent.

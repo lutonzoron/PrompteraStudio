@@ -29,37 +29,21 @@ def ensure_inbox() -> None:
     readme = INBOX_DIR / "README.md"
     if not readme.exists():
         readme.write_text(
-            """# Inbox — histórias geradas pelo Cursor
+            """# Inbox — histórias de qualquer IA (Cursor / Claude / Copilot / …)
 
-Coloque aqui um pacote por história:
+Spec completa no repositório: **AI_STORY_INBOX.md** (e AGENTS.md).
+
+Pacote por história:
 
 ```
 inbox/
   minha_historia/
+    takes.json     # obrigatório
     meta.json      # opcional
-    takes.json     # obrigatório (schema Continuity)
     roteiro.md     # opcional
 ```
 
-Ou um único arquivo `*.takes.json` / `*_takes.json` na raiz do inbox.
-
-O Promptera importa automaticamente (a cada ~5s) e move para `_processed/`.
-
-## meta.json (opcional)
-
-```json
-{
-  "title": "Título",
-  "brief": "...",
-  "slug": "minha_historia",
-  "review_mode": "automatico",
-  "model_pack": "sfw",
-  "style_id": null,
-  "max_duration_sec": 60,
-  "enqueue": false,
-  "seed_base": 2000
-}
-```
+Ou `*.takes.json` / `*_takes.json` na raiz. Import automático ~5s → `_processed/`.
 """,
             encoding="utf-8",
         )

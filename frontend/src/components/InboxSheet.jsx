@@ -6,20 +6,26 @@ export default function InboxSheet({ inbox, busy, setBusy, setToast, onClose, on
     <div className="backdrop" onClick={onClose}>
       <div className="sheet" onClick={(e) => e.stopPropagation()}>
         <div className="sheet-head">
-          <h2>Inbox Cursor</h2>
+          <h2>Inbox</h2>
           <button type="button" className="ghost" onClick={onClose}>
             Fechar
           </button>
         </div>
         <div className="sheet-body stack">
-          <p className="muted">
-            O Cursor grava packs aqui. O app importa sozinho a cada ~5s.
+          <p className="muted" style={{ margin: 0 }}>
+            Cursor, Claude, Copilot ou outra IA grava um pack aqui. O app importa sozinho (~5s).
+          </p>
+          <p className="muted" style={{ margin: 0, fontSize: 12 }}>
+            Spec para agentes: <code>AI_STORY_INBOX.md</code> · <code>AGENTS.md</code>
           </p>
           <pre className="path">{inbox?.inbox_dir || "data/inbox"}</pre>
+          <div className="muted" style={{ fontSize: 12 }}>
+            <code>data/inbox/&lt;slug&gt;/takes.json</code> (+ meta.json, roteiro.md)
+          </div>
           <h3 style={{ margin: 0, fontSize: 14 }}>Pendentes</h3>
           {(inbox?.pending_dirs || []).length === 0 &&
           (inbox?.pending_files || []).length === 0 ? (
-            <p className="muted">Vazio</p>
+            <p className="muted">Vazio — peça à IA para escrever um pack no caminho acima.</p>
           ) : (
             <>
               {(inbox?.pending_dirs || []).map((d) => (

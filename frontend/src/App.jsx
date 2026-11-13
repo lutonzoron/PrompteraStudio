@@ -9,6 +9,7 @@ import QueueDock from "./components/QueueDock.jsx";
 import ReviewModal from "./components/ReviewModal.jsx";
 import Settings from "./components/Settings.jsx";
 import StyleGallery from "./components/StyleGallery.jsx";
+import InboxSheet from "./components/InboxSheet.jsx";
 
 function readHashProjectId() {
   const m = String(window.location.hash || "").match(/^#\/p\/([^/]+)/);
@@ -27,8 +28,9 @@ export default function App() {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState(null);
   const [showArchived, setShowArchived] = useState(false);
-  const [sheet, setSheet] = useState(null); // create | settings
+  const [sheet, setSheet] = useState(null); // create | settings | inbox
   const [page, setPage] = useState("studio"); // studio | styles
+  const [inbox, setInbox] = useState(null);
   const esRef = useRef(null);
 
   const pendingReviews = queue?.pending_reviews?.length || 0;
@@ -67,16 +69,18 @@ export default function App() {
 
   const refresh = useCallback(async () => {
     try {
-      const [h, q, p, s] = await Promise.all([
+      const [h, q, p, s, ib] = await Promise.all([
         api.health(),
         api.queue(),
         api.projects(showArchived),
         api.styles(),
+        api.inbox().catch(() => null),
       ]);
       setHealth(h);
       setQueue(q);
       setProjects(p);
       setStyles(s);
+      if (ib) setInbox(ib);
       setError(null);
     } catch (e) {
       setError(String(e.message || e));
@@ -194,6 +198,7 @@ export default function App() {
         onCreate={() => setSheet("create")}
         onOpenSettings={() => setSheet("settings")}
         onOpenStyles={openStyles}
+        onOpenInbox={() => setSheet("inbox")}
         onComfyStart={() => api.comfyStart().then(refresh)}
       >
         {error ? (
@@ -272,6 +277,22 @@ export default function App() {
           onDone={refresh}
           setToast={setToast}
           onOpenStyles={openStyles}
+        />
+      ) : null}
+
+      {sheet === "inbox" ? (
+        <InboxSheet
+          inbox={inbox}
+          busy={busy}
+          setBusy={setBusy}
+          setToast={setToast}
+          onClose={() => setSheet(null)}
+          onRefresh={async () => {
+            await refresh();
+            try {
+              setInbox(await api.inbox());
+            } catch {}
+          }}
         />
       ) : null}
 

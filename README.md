@@ -59,10 +59,11 @@ python run.py
 
 ## Fluxo rápido
 
-1. Configure ComfyUI + chave de IA
-2. **Nova história** (texto ou dado) **ou** solte `takes.json` em `data/inbox/<slug>/` — ver [CURSOR_INBOX.md](CURSOR_INBOX.md)
-3. Enfileire → acompanhe a **Render queue**
-4. Master em `data/deliverables/<slug>/master.mp4`
+1. Configure ComfyUI (+ chave de IA se for gerar roteiros **dentro** do app)
+2. **Nova história** no app **ou** peça a qualquer IA (Cursor / Claude / Copilot) para escrever um pack em `data/inbox/<slug>/`
+3. Spec para agentes: **[AI_STORY_INBOX.md](AI_STORY_INBOX.md)** · [AGENTS.md](AGENTS.md)
+4. UI **Inbox** → import automático (~5s) ou “Escanear agora” → enfileire
+5. Master em `data/deliverables/<slug>/master.mp4`
 
 ### Defaults Continuity
 

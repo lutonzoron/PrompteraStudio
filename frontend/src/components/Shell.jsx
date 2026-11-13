@@ -10,6 +10,7 @@ export default function Shell({
   onCreate,
   onOpenSettings,
   onOpenStyles,
+  onOpenInbox,
   onComfyStart,
 }) {
   const comfyOn = !!health?.comfy?.online;
@@ -35,6 +36,9 @@ export default function Shell({
             onClick={onOpenStyles}
           >
             Estilos
+          </button>
+          <button type="button" onClick={onOpenInbox}>
+            Inbox
           </button>
           <button type="button" onClick={onOpenSettings}>
             Config
