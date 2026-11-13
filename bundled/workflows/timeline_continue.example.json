@@ -1,0 +1,34 @@
+{
+  "version": 1,
+  "items": [],
+  "prompt_blocks": [],
+  "resolution": {
+    "aspect": "custom",
+    "resolution": "custom",
+    "input_scaling": "Fit and pad",
+    "custom_width": 544,
+    "custom_height": 992,
+    "custom_mode": "fixed"
+  },
+  "continuity": {
+    "version": 3,
+    "capture": true,
+    "session": "example_A_session",
+    "overlap_frames": 22,
+    "output_mode": "full",
+    "source_kind": "checkpoint",
+    "source_id": "PASTE_LATEST_READY_CLIP_ID",
+    "source_video_id": "",
+    "use_references": false,
+    "_comment_use_references": "Keep false on CONTINUE to avoid re-pasting character sheets into the frame.",
+    "continuation_prompt": "PLACEHOLDER_CONTINUE_PROMPT",
+    "idea": "PLACEHOLDER_CONTINUE_PROMPT"
+  },
+  "builder_state": {
+    "version": 1,
+    "mode": "T2VA",
+    "prompt_mode": "simple",
+    "simple_prompt": "PLACEHOLDER_CONTINUE_PROMPT",
+    "duration": 5
+  }
+}

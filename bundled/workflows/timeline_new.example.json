@@ -1,0 +1,33 @@
+{
+  "version": 1,
+  "items": [],
+  "prompt_blocks": [],
+  "resolution": {
+    "aspect": "custom",
+    "resolution": "custom",
+    "input_scaling": "Fit and pad",
+    "custom_width": 544,
+    "custom_height": 992,
+    "custom_mode": "fixed"
+  },
+  "continuity": {
+    "version": 3,
+    "capture": true,
+    "session": "example_A_session",
+    "overlap_frames": 22,
+    "output_mode": "full",
+    "source_kind": "checkpoint",
+    "source_id": "",
+    "source_video_id": "",
+    "use_references": false,
+    "continuation_prompt": "",
+    "idea": ""
+  },
+  "builder_state": {
+    "version": 1,
+    "mode": "T2VA",
+    "prompt_mode": "simple",
+    "simple_prompt": "PLACEHOLDER_PROMPT",
+    "duration": 5
+  }
+}

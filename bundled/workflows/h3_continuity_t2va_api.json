@@ -1,0 +1,143 @@
+{
+  "1": {
+    "class_type": "UNETLoader",
+    "inputs": {
+      "unet_name": "minimax_h3_fl2va_pruned_int8_convrot.safetensors",
+      "weight_dtype": "default"
+    }
+  },
+  "2": {
+    "class_type": "CLIPLoader",
+    "inputs": {
+      "clip_name": "qwen3vl_32b_minimax_h3_nvfp4_awq.safetensors",
+      "type": "minimax",
+      "device": "default"
+    }
+  },
+  "3": {
+    "class_type": "VAELoader",
+    "inputs": {
+      "vae_name": "minimax_h3_video_vae_fp16.safetensors"
+    }
+  },
+  "4": {
+    "class_type": "VAELoader",
+    "inputs": {
+      "vae_name": "minimax_h3_audio_vae_fp32.safetensors"
+    }
+  },
+  "5": {
+    "class_type": "MiniMaxH3Director",
+    "inputs": {
+      "mode": "T2VA",
+      "prompt": "PLACEHOLDER_PROMPT",
+      "width": 544,
+      "height": 992,
+      "duration": 5.0,
+      "ref_image_size": "match",
+      "timeline_data": "PLACEHOLDER_TIMELINE_JSON_STRING",
+      "builder_state": "",
+      "frame_rate": 24.0,
+      "fl2va_model": ["1", 0]
+    }
+  },
+  "6": {
+    "class_type": "MiniMaxH3DirectorGuide",
+    "inputs": {
+      "clip": ["2", 0],
+      "vae": ["3", 0],
+      "guide": ["5", 0],
+      "audio_vae": ["4", 0]
+    }
+  },
+  "7": {
+    "class_type": "RandomNoise",
+    "inputs": {
+      "noise_seed": 3001
+    }
+  },
+  "8": {
+    "class_type": "KSamplerSelect",
+    "inputs": {
+      "sampler_name": "euler"
+    }
+  },
+  "9": {
+    "class_type": "BasicScheduler",
+    "inputs": {
+      "model": ["5", 5],
+      "scheduler": "simple",
+      "steps": 8,
+      "denoise": 1.0
+    }
+  },
+  "10": {
+    "class_type": "BasicGuider",
+    "inputs": {
+      "model": ["5", 5],
+      "conditioning": ["6", 0]
+    }
+  },
+  "11": {
+    "class_type": "SamplerCustomAdvanced",
+    "inputs": {
+      "noise": ["7", 0],
+      "guider": ["10", 0],
+      "sampler": ["8", 0],
+      "sigmas": ["9", 0],
+      "latent_image": ["6", 1]
+    }
+  },
+  "12": {
+    "class_type": "DaSiWaH3ContinuityAppend",
+    "inputs": {
+      "sampled": ["11", 0],
+      "context": ["6", 2]
+    }
+  },
+  "13": {
+    "class_type": "VAEDecode",
+    "inputs": {
+      "samples": ["12", 0],
+      "vae": ["3", 0]
+    }
+  },
+  "14": {
+    "class_type": "VAEDecodeAudio",
+    "inputs": {
+      "samples": ["12", 0],
+      "vae": ["4", 0]
+    }
+  },
+  "15": {
+    "class_type": "DaSiWa_EnhancedVideoCombine",
+    "inputs": {
+      "images": ["13", 0],
+      "audio": ["14", 0],
+      "frame_rate": 24.0,
+      "codec": "H.264",
+      "container": "MP4",
+      "bit_depth": "8-bit",
+      "quality": 18,
+      "log_level": "Standard",
+      "pingpong": false,
+      "save_metadata": true,
+      "filename_prefix": "video/project/A_t01",
+      "save_output": true,
+      "pass_frames": false,
+      "crop_to_audio": false,
+      "audio_codec": "AAC",
+      "audio_bitrate": "192k",
+      "save_first_frame": false,
+      "save_last_frame": false,
+      "free_memory_if_needed": true
+    }
+  },
+  "16": {
+    "class_type": "DaSiWaH3ContinuityPublish",
+    "inputs": {
+      "filename": ["15", 1],
+      "ticket": ["12", 1]
+    }
+  }
+}

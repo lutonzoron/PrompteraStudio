@@ -1,0 +1,152 @@
+[
+  {
+    "id": "disney_pixar",
+    "label": "Disney / Pixar",
+    "lock_en": "Visual style lock: Disney Pixar 3D animated feature look — soft stylized faces, expressive eyes, appealing proportions, subsurface skin, cinematic key light, clean family-animation render. Consistent CG character design. Not live-action, not anime, not 2D cartoon. Stylize period materials and costumes; do not modernize the world.",
+    "bible_hint_pt": "Estética 3D Disney/Pixar: personagens expressivos, iluminação cinematográfica suave, render limpo de animação familiar. Respeitar época do tema em figurino e cenário.",
+    "craft_rules_en": "MUST READ AS DISNEY/PIXAR 3D FEATURE CHARACTER: appealing stylized proportions, expressive eyes, soft subsurface skin, cinematic key light. FORBIDDEN: photoreal live-action, anime, flat 2D cel.",
+    "anti_drift_en": "Not photoreal, not anime, not Simpsons cel.",
+    "negatives": "photoreal, live-action, anime, flat 2D cartoon, horror gore",
+    "model_pack_hint": "sfw"
+  },
+  {
+    "id": "simpsons",
+    "label": "Simpsons",
+    "lock_en": "Visual style lock: classic The Simpsons 2D TV cartoon — yellow skin for humans, overbite smile, round eyes, thick black outlines, flat cel shading, simple Springfield shapes, satirical cartoon comedy look. Consistent 2D cel animation. Not 3D, not photoreal, not anime. Stylize period props and costumes; do not replace them with modern defaults.",
+    "bible_hint_pt": "Estética 2D clássica dos Simpsons: contornos pretos, shading chapado, proporções cartunescas, tom satírico.",
+    "craft_rules_en": "MUST READ AS SIMPSONS 2D CEL: yellow skin humans, thick black outlines, flat cel shading. FORBIDDEN: 3D CGI, photoreal, anime.",
+    "anti_drift_en": "Not Pixar 3D, not photoreal, not anime.",
+    "negatives": "3D CGI, photoreal, anime, subsurface skin",
+    "model_pack_hint": "sfw"
+  },
+  {
+    "id": "realista",
+    "label": "Realista",
+    "lock_en": "Visual style lock: photorealistic live-action cinematic look — natural skin texture, real-world materials, physically plausible lighting, film camera depth of field, documentary/cinematic realism. Consistent real human/object appearance. Not cartoon, not anime, not stylized CGI animation. Historical accuracy of era, costume, and set dressing is required when the theme is period.",
+    "bible_hint_pt": "Estética live-action fotorrealista: texturas naturais, iluminação física, linguagem de câmera cinematográfica. Evitar anacronismos se for período.",
+    "craft_rules_en": "MUST READ AS PHOTOREAL LIVE-ACTION: natural skin, real materials, cinematic DOF. FORBIDDEN: cartoon, anime, Pixar CGI, claymation.",
+    "anti_drift_en": "Not cartoon, not anime, not stylized CGI.",
+    "negatives": "cartoon, anime, pixar, claymation, cel shading",
+    "model_pack_hint": "sfw"
+  },
+  {
+    "id": "realista_nsfw",
+    "label": "Realista NSFW",
+    "lock_en": "Visual style lock: photorealistic live-action adult cinematic look — natural skin, real bodies, film grain optional, cinematic lighting, shallow DOF. Explicit adult consensual content when prompted. Clear anatomically correct genitals when sex is shown. Not cartoon, not anime, not claymation, no character sheet, no studio void.",
+    "bible_hint_pt": "Live-action adulto fotorrealista (ex.: RU NSFW / Lara). Corpo e rosto consistentes; anatomia correta; sem cartoon.",
+    "craft_rules_en": "MUST READ AS PHOTOREAL ADULT LIVE-ACTION: natural skin, real materials, cinematic camera. Clear correct adult anatomy when explicit. FORBIDDEN: cartoon, anime, claymation, censored blur as default, swapped genitals.",
+    "anti_drift_en": "Not cartoon, not anime, not claymation, not CGI doll skin.",
+    "negatives": "cartoon, anime, pixar, claymation, censored mosaic, hermaphrodite, fused crotch",
+    "model_pack_hint": "nsfw"
+  },
+  {
+    "id": "massinha",
+    "label": "Massinha / Stop-motion",
+    "lock_en": "Visual style lock: Aardman / Laika style HANDCRAFTED CLAYMATION STOP-MOTION — sculpted plasticine puppets with visible fingerprints, tool marks, seams and armature joints; matte chalky clay surfaces; slightly lopsided handmade proportions; miniature practical sets (foam, wood, fabric) with forced perspective; tabletop studio lighting; posed frame-by-frame stop-motion look. ABSOLUTELY NOT: smooth Disney/Pixar 3D CGI, subsurface-scattering skin, glossy plastic shaders, clean subdivision surfaces, photoreal live-action, 2D cel cartoon, anime.",
+    "bible_hint_pt": "Massinha/stop-motion (Aardman/Laika): plasticina com marca de dedo, sets em miniatura, luz de mesa, movimento posado. Proibido Pixar liso.",
+    "craft_rules_en": "MUST READ AS CLAYMATION / STOP-MOTION PUPPET: sculpted plasticine, visible fingerprints and tool marks, matte clay skin, imperfect handmade proportions, armature-puppet silhouette. FORBIDDEN: smooth Pixar/Disney 3D CGI, glossy plastic, anime, photoreal humans.",
+    "anti_drift_en": "Not smooth Pixar CGI, not photoreal, not anime, not flat 2D cel.",
+    "negatives": "pixar, disney cgi, photoreal, anime, glossy plastic, subsurface skin",
+    "model_pack_hint": "sfw"
+  },
+  {
+    "id": "massinha_vila_lele",
+    "label": "Massinha Vila Lelé",
+    "lock_en": "Visual style lock: preschool HANDCRAFTED CLAYMATION stop-motion like Vila Lelé — tactile plasticine puppets with fingerprint dents; big round eyes with white sclera and black pupils aimed together; cheeks stay still; counted limbs only; one miniature clay diorama set (kitchen/backyard); locked-off eye-level medium-wide 16:9 camera; soft daylight or warm interior; gentle funny SFW preschool tone. No photo backdrop, no cutout collage, no character sheet, no studio void, no text/numbers/logos/subtitles. ABSOLUTELY NOT: Pixar CGI, photoreal, anime.",
+    "bible_hint_pt": "Massinha infantil Vila Lelé: olhos grandes, membros contados, diorama único, câmera 16:9 fixa, tom preschool gentil. Elenco típico: Lelé, Tito, Dona Rosa, Beto, Nica.",
+    "craft_rules_en": "MUST READ AS PRESCHOOL CLAYMATION: fingerprint plasticine, big round eyes, still cheeks, counted limbs, fixed 16:9 camera. Only the speaking mouth moves. FORBIDDEN: Pixar CGI, photoreal, anime, text on screen.",
+    "anti_drift_en": "Not Pixar, not photoreal, not anime, not adult HTF gore.",
+    "negatives": "pixar, photoreal, anime, gore, text, logos, character sheet, studio void",
+    "model_pack_hint": "sfw"
+  },
+  {
+    "id": "massinha_htf",
+    "label": "Massinha HTF (dark comedy)",
+    "lock_en": "Visual style lock: HANDCRAFTED CLAYMATION stop-motion dark comedy (Happy Tree Friends inspired tone, original characters) — cute adult animal plasticine puppets (NOT children), fingerprint dents, pastel miniature sets, locked-off eye-level medium-wide 16:9, bright cute look that can turn accident/gore cartoony. No photo backdrop, no cutout, no text/logos. ABSOLUTELY NOT: Pixar smooth CGI, photoreal humans, preschool soft educational tone.",
+    "bible_hint_pt": "Massinha dark comedy estilo HTF: bichinhos fofos adultos de plasticina, pastel, acidentes em cadeia. Não é Vila Lelé infantil.",
+    "craft_rules_en": "MUST READ AS CUTE ADULT ANIMAL CLAYMATION: pastel plasticine puppets, fingerprint dents, accident-chain dark comedy. FORBIDDEN: child characters, Pixar CGI, photoreal, anime.",
+    "anti_drift_en": "Not preschool Vila Lelé, not Pixar, not photoreal.",
+    "negatives": "children, pixar, photoreal, anime, character sheet, studio void",
+    "model_pack_hint": "nsfw"
+  },
+  {
+    "id": "aranhaverso",
+    "label": "Aranhaverso",
+    "lock_en": "Visual style lock: Into the Spider-Verse / Across the Spider-Verse comic-hybrid animation — bold ink outlines, Benday/halftone print dots, screen-tone textures, chromatic aberration (RGB edge fringing), mixed 2D graphic overlays on dimensional forms, high-contrast comic color blocking, slightly offset print registration, energetic graphic-novel framing. Looks printed and collaged, not a clean CG render. ABSOLUTELY NOT: smooth Disney/Pixar 3D CGI, photoreal live-action, flat Simpsons TV cel only, anime.",
+    "bible_hint_pt": "Estética Aranhaverso: HQ/animação com retícula, aberração cromática, texturas de impressão.",
+    "craft_rules_en": "MUST READ AS SPIDER-VERSE / COMIC-HYBRID: bold ink outlines, Benday/halftone dots, chromatic aberration. FORBIDDEN: smooth Pixar CGI, photoreal, plain TV cel only.",
+    "anti_drift_en": "Not smooth Pixar, not photoreal, not flat Simpsons only.",
+    "negatives": "pixar smooth cgi, photoreal, plain tv cel only",
+    "model_pack_hint": "sfw"
+  },
+  {
+    "id": "dc_2000s",
+    "label": "DC anos 2000",
+    "lock_en": "Visual style lock: early-2000s DC Animated Universe / Justice League (2001) 2D TV animation — Bruce Timm / Butch Lukic line: angular heroic silhouettes, strong jawlines, broad shoulders, tapered waists, clean bold black outlines, limited cel shading with sparse soft gradients, graphic Cartoon Network color blocking, dramatic superhero lighting. Consistent Western superhero Saturday-morning cel look. ABSOLUTELY NOT: Pixar CGI, photoreal, anime, Simpsons yellow-skin, Spider-Verse halftone.",
+    "bible_hint_pt": "2D DC animação anos 2000 (Liga da Justiça / DCAU, traço Bruce Timm).",
+    "craft_rules_en": "MUST READ AS DCAU / JUSTICE LEAGUE 2001 CEL: angular heroic design, bold black outlines, limited cel shading. FORBIDDEN: Pixar CGI, anime, Spider-Verse halftone, Simpsons yellow skin.",
+    "anti_drift_en": "Not Pixar, not anime, not Spider-Verse print.",
+    "negatives": "pixar, anime, photoreal, spider-verse halftone, simpsons yellow",
+    "model_pack_hint": "sfw"
+  },
+  {
+    "id": "dragon_ball_z",
+    "label": "Dragon Ball Z",
+    "lock_en": "Visual style lock: 1990s Toei Dragon Ball Z TV anime / Akira Toriyama character design — large expressive eyes, geometric spiky hair masses, simplified athletic-muscular silhouettes, firm bold black outlines, hard cel-shaded shadow blocks, saturated vibrant colors, dynamic action framing, classic Japanese 2D TV anime look. ABSOLUTELY NOT: Pixar CGI, photoreal, modern CGI Dragon Ball Super movie look, Simpsons, DCAU, Spider-Verse print.",
+    "bible_hint_pt": "Anime 2D Dragon Ball Z (Toei anos 90, traço Toriyama).",
+    "craft_rules_en": "MUST READ AS 1990s TOEI DRAGON BALL Z ANIME: Toriyama design, hard cel-shaded shadows, saturated colors. FORBIDDEN: Pixar CGI, photoreal, modern CGI DB Super movie look.",
+    "anti_drift_en": "Not Pixar, not photoreal, not DCAU Western cartoon.",
+    "negatives": "pixar, photoreal, dcau, spider-verse, modern cgi db",
+    "model_pack_hint": "sfw"
+  },
+  {
+    "id": "anime_2d",
+    "label": "Anime 2D",
+    "lock_en": "Visual style lock: Japanese 2D TV/feature anime look — clean cel shading, expressive eyes, firm outlines, soft cinematic lighting, gentle motion on stills, consistent character design sheet fidelity. Not photoreal, not Pixar 3D CGI, not Western TV cel (Simpsons/DCAU), not Spider-Verse print.",
+    "bible_hint_pt": "Anime 2D genérico (ex.: anime6 lanterna): cel shading limpo, olhos expressivos, motion suave. SFW por padrão.",
+    "craft_rules_en": "MUST READ AS 2D ANIME: clean cel shading, expressive eyes, firm outlines. FORBIDDEN: photoreal, Pixar CGI, Simpsons yellow skin, Spider-Verse halftone.",
+    "anti_drift_en": "Not photoreal, not Pixar, not Western cel only.",
+    "negatives": "photoreal, pixar, simpsons, spider-verse print, live-action",
+    "model_pack_hint": "sfw"
+  },
+  {
+    "id": "anime_horror",
+    "label": "Anime Horror",
+    "lock_en": "Visual style lock: Japanese 2D horror anime — clean cel shading, dark atmosphere, flickering practical lights, tense framing, abandoned Japanese locations, expressive scared faces, consistent character design. SFW scare (no gratuitous gore unless prompted). Not photoreal, not Pixar, not cute slice-of-life pastel only.",
+    "bible_hint_pt": "Anime 2D horror (ex.: horror 1min escola): corredor escuro, luzes piscando, tensão. Personagem consistente.",
+    "craft_rules_en": "MUST READ AS 2D HORROR ANIME: cel shading, dark tense lighting, scared expressive eyes. FORBIDDEN: photoreal, Pixar CGI, bright preschool look.",
+    "anti_drift_en": "Not photoreal, not Pixar, not cheerful slice-of-life only.",
+    "negatives": "photoreal, pixar, bright preschool, comedy sitcom lighting",
+    "model_pack_hint": "sfw"
+  },
+  {
+    "id": "cartoon_instagram_br",
+    "label": "Cartoon Instagram BR",
+    "lock_en": "Visual style lock: bold flat Instagram / Reels Brazilian cartoon — thick black outlines, flat colors, simple shapes, vertical or POV-friendly framing, high readability on mobile, no photoreal detail. Often first-person POV with visible sleeves/hands in lower frame. No burned-in subtitles, no logos. Not anime, not Pixar 3D, not Simpsons yellow-skin mandatory.",
+    "bible_hint_pt": "Cartoon flat estilo Reels/Instagram BR (shorts mystery, POV, cartoon AB): contorno grosso, cores chapadas, POV com mangas/mãos.",
+    "craft_rules_en": "MUST READ AS FLAT IG/REELS CARTOON: thick black outlines, flat color fills, simple shapes, mobile-first clarity. FORBIDDEN: photoreal, anime cel complexity, Pixar CGI, burned-in captions.",
+    "anti_drift_en": "Not photoreal, not anime, not Pixar.",
+    "negatives": "photoreal, anime, pixar, subtitles burned in, logos",
+    "model_pack_hint": "sfw"
+  },
+  {
+    "id": "biohazard_cinematic",
+    "label": "Biohazard Cinematic",
+    "lock_en": "Visual style lock: photoreal live-action cinematic survival-horror outbreak (Resident Evil inspired, original characters) — wet concrete, red alarm strobes, smoke, tactical wardrobe, grounded camera, practical grit. SFW violence tone unless prompted otherwise. Not cartoon, not anime, no character sheet void.",
+    "bible_hint_pt": "Live-action cinematic biohazard/RE-inspired (ex.: re_horror_1min): corredor de instalação, alarme, grit tático.",
+    "craft_rules_en": "MUST READ AS PHOTOREAL SURVIVAL-HORROR LIVE-ACTION: tactical grit, alarm lighting, cinematic tracking. FORBIDDEN: cartoon, anime, claymation, clean studio void.",
+    "anti_drift_en": "Not cartoon, not anime, not clean fashion lighting.",
+    "negatives": "cartoon, anime, claymation, character sheet, studio void, comedy pastel",
+    "model_pack_hint": "sfw"
+  },
+  {
+    "id": "faith_cinematic",
+    "label": "Fé / Cinemático suave",
+    "lock_en": "Visual style lock: photoreal live-action soft reverent cinematic — natural skin, warm practical light (candle, dawn, stained glass), shallow DOF, calm Christian/devotional mood, SFW. Slow gentle motion. Not cartoon, not anime, not horror grit.",
+    "bible_hint_pt": "Live-action suave religioso/devocional (ex.: faith_2h): vela, amanhecer, tom reverente SFW.",
+    "craft_rules_en": "MUST READ AS SOFT REVERENT PHOTOREAL CINEMA: warm practical light, calm faces, shallow DOF. FORBIDDEN: cartoon, anime, horror strobes, comedy slapstick.",
+    "anti_drift_en": "Not cartoon, not anime, not horror outbreak look.",
+    "negatives": "cartoon, anime, horror gore, comedy slapstick, neon cyberpunk",
+    "model_pack_hint": "sfw"
+  }
+]

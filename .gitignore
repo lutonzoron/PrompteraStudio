@@ -1,0 +1,58 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+.venv/
+venv/
+env/
+*.egg-info/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# Secrets & local runtime
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+
+# Promptera data (DB, keys, videos, machine)
+data/studio.db
+data/studio.db-*
+data/settings.json
+data/machine_profile.json
+data/deliverables/
+data/projects/
+data/inbox/**
+!data/inbox/.gitkeep
+!data/.gitkeep
+
+# Media / logs
+*.mp4
+*.webm
+*.mov
+*.mkv
+*.wav
+*.mp3
+*.log
+download_logs/
+
+# Frontend
+frontend/node_modules/
+frontend/dist/
+
+# OS / editors
+.DS_Store
+Thumbs.db
+Desktop.ini
+.idea/
+.vscode/
+*.swp
+*~
+
+# Cursor / agent local
+.cursor/
+agent-transcripts/
