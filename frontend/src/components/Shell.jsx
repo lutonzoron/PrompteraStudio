@@ -12,6 +12,7 @@ export default function Shell({
   onOpenStyles,
   onOpenInbox,
   onComfyStart,
+  inboxPending = 0,
 }) {
   const comfyOn = !!health?.comfy?.online;
   const llmOn = !!health?.onboarding?.steps?.llm?.done;
@@ -39,6 +40,7 @@ export default function Shell({
           </button>
           <button type="button" onClick={onOpenInbox}>
             Inbox
+            {inboxPending > 0 ? <span className="badge warn">{inboxPending}</span> : null}
           </button>
           <button type="button" onClick={onOpenSettings}>
             Config

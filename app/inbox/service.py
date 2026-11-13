@@ -43,7 +43,10 @@ inbox/
     roteiro.md     # opcional
 ```
 
-Ou `*.takes.json` / `*_takes.json` na raiz. Import automático ~5s → `_processed/`.
+Ou `*.takes.json` / `*_takes.json` na raiz.
+
+**Não importa sozinho.** Abra Inbox no app → Aprovar ou Rejeitar cada pack.
+Aprovados vão para `_processed/`; rejeitados para `_failed/`.
 """,
             encoding="utf-8",
         )
@@ -231,60 +234,152 @@ def import_pack_dir(pack_dir: Path, *, move: bool = True) -> dict[str, Any]:
     return result
 
 
+def _preview_pack(path: Path) -> dict[str, Any]:
+    """Lightweight preview for approval UI (no import)."""
+    info: dict[str, Any] = {
+        "name": path.name,
+        "kind": "dir" if path.is_dir() else "file",
+        "path": str(path),
+        "title": path.name.replace("_", " ").replace("-", " "),
+        "slug": _slugify(path.stem if path.is_file() else path.name),
+        "takes_count": 0,
+        "model_pack": None,
+        "brief": None,
+        "has_roteiro": False,
+        "has_meta": False,
+        "ready": False,
+        "error": None,
+    }
+    try:
+        takes_path: Path | None = None
+        meta: dict[str, Any] = {}
+        if path.is_dir():
+            for name in ("takes.json", "takes.JSON"):
+                if (path / name).exists():
+                    takes_path = path / name
+                    break
+            if takes_path is None:
+                cands = list(path.glob("*takes*.json"))
+                takes_path = cands[0] if cands else None
+            meta_path = path / "meta.json"
+            if meta_path.exists():
+                info["has_meta"] = True
+                meta = json.loads(meta_path.read_text(encoding="utf-8"))
+            for name in ("roteiro.md", "story.md"):
+                if (path / name).exists():
+                    info["has_roteiro"] = True
+                    break
+        elif path.is_file() and path.suffix.lower() == ".json":
+            takes_path = path
+        if takes_path and takes_path.exists():
+            takes = _load_takes(takes_path)
+            info["takes_count"] = len(takes)
+            info["ready"] = len(takes) > 0
+            if not meta.get("model_pack"):
+                info["model_pack"] = _guess_model_pack(takes, info["slug"])
+        if meta.get("title"):
+            info["title"] = meta["title"]
+        if meta.get("slug"):
+            info["slug"] = meta["slug"]
+        if meta.get("brief"):
+            info["brief"] = meta["brief"]
+        if meta.get("model_pack"):
+            info["model_pack"] = meta["model_pack"]
+        if not info["ready"]:
+            info["error"] = "takes.json ausente ou vazio"
+    except Exception as exc:
+        info["error"] = str(exc)
+        info["ready"] = False
+    return info
+
+
 def list_inbox() -> dict[str, Any]:
     ensure_inbox()
-    pending_dirs = [
-        p.name
-        for p in INBOX_DIR.iterdir()
-        if p.is_dir() and not p.name.startswith("_")
-    ]
-    pending_files = [
-        p.name
-        for p in INBOX_DIR.glob("*.json")
-        if p.is_file()
-    ]
+    pending: list[dict[str, Any]] = []
+    for p in sorted(INBOX_DIR.iterdir(), key=lambda x: x.name.lower()):
+        if p.name.startswith("_") or p.name == "README.md":
+            continue
+        if p.is_dir():
+            pending.append(_preview_pack(p))
+        elif p.suffix.lower() == ".json" and (
+            "takes" in p.name.lower() or p.name.lower() == "takes.json"
+        ):
+            pending.append(_preview_pack(p))
+    pending_dirs = [x["name"] for x in pending if x["kind"] == "dir"]
+    pending_files = [x["name"] for x in pending if x["kind"] == "file"]
     return {
         "inbox_dir": str(INBOX_DIR),
+        "pending": pending,
         "pending_dirs": pending_dirs,
         "pending_files": pending_files,
+        "pending_count": len(pending),
         "processed_count": len(list(PROCESSED_DIR.iterdir())) if PROCESSED_DIR.exists() else 0,
+        "auto_import": False,
     }
 
 
-def scan_and_import_inbox() -> list[dict[str, Any]]:
-    """Import all pending packs/files in inbox."""
+def reject_inbox_item(name: str) -> dict[str, Any]:
+    """Move a pending pack/file to _failed (user rejected)."""
     ensure_inbox()
-    results: list[dict[str, Any]] = []
+    # prevent path traversal
+    safe = Path(name).name
+    if not safe or safe.startswith("_") or safe != name:
+        raise ValueError("nome inválido")
+    path = INBOX_DIR / safe
+    if not path.exists():
+        raise FileNotFoundError(f"Não encontrado no inbox: {safe}")
+    dest = FAILED_DIR / f"rejected_{safe}_{int(time.time())}"
+    if path.is_dir():
+        shutil.move(str(path), str(dest))
+    else:
+        dest.mkdir(parents=True, exist_ok=True)
+        shutil.move(str(path), str(dest / path.name))
+        (dest / "rejected.txt").write_text("Rejeitado no Inbox (aprovação manual).", encoding="utf-8")
+    return {"ok": True, "rejected": safe, "moved_to": str(dest)}
 
-    for p in sorted(INBOX_DIR.iterdir()):
-        if p.name.startswith("_") or p.name == "README.md":
-            continue
-        try:
-            if p.is_dir():
-                results.append(import_pack_dir(p, move=True))
-            elif p.suffix.lower() == ".json" and (
-                "takes" in p.name.lower() or p.name.lower() == "takes.json"
-            ):
-                meta = {"slug": _slugify(p.stem.replace("_takes", "").replace(".takes", ""))}
-                r = import_takes_file(p, meta=meta, move_to_processed=True, source_label=p.name)
-                # move original
-                dest = PROCESSED_DIR / f"{p.stem}_{int(time.time())}{p.suffix}"
-                try:
-                    shutil.move(str(p), str(dest))
-                except OSError:
-                    pass
-                results.append(r)
-        except Exception as exc:
-            fail = FAILED_DIR / f"{p.name}_{int(time.time())}"
+
+def approve_inbox_item(name: str) -> dict[str, Any]:
+    """Import one pending pack/file after user approval."""
+    ensure_inbox()
+    safe = Path(name).name
+    if not safe or safe.startswith("_") or safe != name:
+        raise ValueError("nome inválido")
+    path = INBOX_DIR / safe
+    if not path.exists():
+        raise FileNotFoundError(f"Não encontrado no inbox: {safe}")
+    try:
+        if path.is_dir():
+            return import_pack_dir(path, move=True)
+        if path.suffix.lower() == ".json":
+            meta = {"slug": _slugify(path.stem.replace("_takes", "").replace(".takes", ""))}
+            r = import_takes_file(path, meta=meta, move_to_processed=True, source_label=path.name)
+            dest = PROCESSED_DIR / f"{path.stem}_{int(time.time())}{path.suffix}"
             try:
-                if p.is_dir():
-                    shutil.move(str(p), str(fail))
-                else:
-                    fail.mkdir(parents=True, exist_ok=True)
-                    shutil.move(str(p), str(fail / p.name))
-                    (fail / "error.txt").write_text(str(exc), encoding="utf-8")
+                if path.exists():
+                    shutil.move(str(path), str(dest))
             except OSError:
                 pass
-            results.append({"ok": False, "error": str(exc), "path": str(p)})
+            return r
+        raise ValueError(f"Tipo não suportado: {safe}")
+    except Exception as exc:
+        fail = FAILED_DIR / f"{safe}_{int(time.time())}"
+        try:
+            if path.exists() and path.is_dir():
+                shutil.move(str(path), str(fail))
+            elif path.exists():
+                fail.mkdir(parents=True, exist_ok=True)
+                shutil.move(str(path), str(fail / path.name))
+                (fail / "error.txt").write_text(str(exc), encoding="utf-8")
+        except OSError:
+            pass
+        return {"ok": False, "error": str(exc), "path": str(path)}
 
+
+def scan_and_import_inbox() -> list[dict[str, Any]]:
+    """Approve/import ALL pending packs (explicit user action only)."""
+    ensure_inbox()
+    results: list[dict[str, Any]] = []
+    snapshot = list_inbox().get("pending") or []
+    for item in snapshot:
+        results.append(approve_inbox_item(item["name"]))
     return results

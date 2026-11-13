@@ -11,7 +11,7 @@ data/inbox/<slug>/
   roteiro.md   # optional
 ```
 
-Promptera imports automatically (~5s) or via UI **Inbox → Escanear agora**.
+Promptera detects the pack (~5s toast) but **waits for approval**: UI **Inbox → Aprovar**.
 
 ## Roles
 

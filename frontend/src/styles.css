@@ -1602,6 +1602,31 @@ input:focus, select:focus, textarea:focus {
   justify-content: space-between;
   align-items: center;
 }
+.inbox-card {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 12px;
+  align-items: start;
+  padding: 12px;
+  border-radius: 12px;
+  border: 1px solid var(--line2);
+  background: rgba(18, 20, 16, 0.9);
+}
+.inbox-card-main {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.inbox-card-actions {
+  display: inline-flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.inbox-card-actions .primary,
+.inbox-card-actions .danger {
+  min-width: 96px;
+}
 .q-eta {
   gap: 8px;
 }

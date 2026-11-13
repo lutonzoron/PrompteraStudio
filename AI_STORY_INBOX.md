@@ -24,7 +24,9 @@ Also accepted:
 - Flat file: `data/inbox/<slug>_takes.json` or `data/inbox/<slug>.takes.json`
 - Alt names inside the pack: `story.md` instead of `roteiro.md`
 
-The app scans ~every 5s, imports, and moves the pack to `data/inbox/_processed/`.
+The app **detects** new packs (~every 5s) and shows them in **Inbox**, but does **not**
+import until a human clicks **Aprovar** (or **Aprovar todos**). Rejected packs go to
+`data/inbox/_failed/`; approved packs move to `data/inbox/_processed/`.
 
 `<slug>` = lowercase snake_case or kebab-case, ASCII preferred  
 Examples: `milkshake_htf`, `vila_lele_01`, `shorts_mystery_30s`
@@ -199,18 +201,19 @@ Master export: Continuity **Full** means each take file already contains 1…N. 
 [ ] Write takes.json with n, kind, session, seed, duration, prefix, prompt
 [ ] Optional meta.json + roteiro.md
 [ ] Write pack under data/inbox/<slug>/
-[ ] Tell user: open Promptera → Inbox / Studio → enqueue when ready
+[ ] Tell user: open Promptera → Inbox → Aprovar → enqueue when ready
 ```
 
 ---
 
-## 7. After import
+## 7. After approval
 
-1. Story appears as **Rascunho** (draft) in Studio  
-2. User opens project → **Enfileirar geração**  
-3. Render queue shows progress; master lands in `data/deliverables/<slug>/master.mp4`
+1. User opens **Inbox** → **Aprovar** (or rejects)  
+2. Story appears as **Rascunho** (draft) in Studio  
+3. User opens project → **Enfileirar geração**  
+4. Render queue shows progress; master lands in `data/deliverables/<slug>/master.mp4`
 
-UI: Inbox button in the top nav opens pending packs + “Escanear agora”.
+UI: Inbox badge shows pending count; per-pack **Aprovar** / **Rejeitar**.
 
 ---
 

@@ -81,6 +81,10 @@ export const api = {
   estimate: (takes) => req(`/api/estimate?takes=${takes}`),
 
   inbox: () => req("/api/inbox"),
+  inboxApprove: (name) =>
+    req("/api/inbox/approve", { method: "POST", body: JSON.stringify({ name }) }),
+  inboxReject: (name) =>
+    req("/api/inbox/reject", { method: "POST", body: JSON.stringify({ name }) }),
   inboxScan: () => req("/api/inbox/scan", { method: "POST" }),
   importPath: (body) =>
     req("/api/inbox/import-path", { method: "POST", body: JSON.stringify(body) }),

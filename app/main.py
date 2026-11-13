@@ -44,8 +44,10 @@ from .story.service import generate_dice_brief, generate_story, validate_takes
 from .styles.service import adapt_style, duplicate_style, ensure_seed_styles
 from .inbox.service import (
     INBOX_DIR,
+    approve_inbox_item,
     ensure_inbox,
     list_inbox,
+    reject_inbox_item,
     scan_and_import_inbox,
     import_takes_file,
 )
@@ -63,21 +65,27 @@ app.add_middleware(
 
 
 async def _inbox_watcher() -> None:
-    """Poll Cursor drop folder every 5s."""
+    """Watch drop folder — notify pending packs; never auto-import (approval required)."""
     ensure_inbox()
+    last_names: set[str] = set()
     while True:
         try:
-            results = scan_and_import_inbox()
-            for r in results:
-                if r.get("ok") and not r.get("skipped"):
-                    await broadcast(
-                        {
-                            "type": "inbox_imported",
-                            "project_id": (r.get("project") or {}).get("id"),
-                            "title": (r.get("project") or {}).get("title"),
-                            "takes_count": r.get("takes_count"),
-                        }
-                    )
+            snap = list_inbox()
+            pending = snap.get("pending") or []
+            names = {str(p.get("name")) for p in pending}
+            new_items = [p for p in pending if p.get("name") not in last_names]
+            if new_items:
+                await broadcast(
+                    {
+                        "type": "inbox_pending",
+                        "count": len(pending),
+                        "names": [p.get("name") for p in new_items],
+                        "titles": [p.get("title") for p in new_items],
+                    }
+                )
+            elif names != last_names:
+                await broadcast({"type": "inbox_changed", "count": len(pending)})
+            last_names = names
         except Exception as exc:
             await broadcast({"type": "inbox_error", "error": str(exc)})
         await asyncio.sleep(5.0)
@@ -732,8 +740,45 @@ def api_inbox() -> dict[str, Any]:
     return list_inbox()
 
 
+class InboxItemBody(BaseModel):
+    name: str
+
+
+@app.post("/api/inbox/approve")
+async def api_inbox_approve(body: InboxItemBody) -> dict[str, Any]:
+    try:
+        result = approve_inbox_item(body.name)
+    except FileNotFoundError as exc:
+        raise HTTPException(404, str(exc)) from exc
+    except ValueError as exc:
+        raise HTTPException(400, str(exc)) from exc
+    if result.get("ok") and not result.get("skipped"):
+        await broadcast(
+            {
+                "type": "inbox_imported",
+                "project_id": (result.get("project") or {}).get("id"),
+                "title": (result.get("project") or {}).get("title"),
+                "takes_count": result.get("takes_count"),
+            }
+        )
+    return {"result": result, "inbox": list_inbox()}
+
+
+@app.post("/api/inbox/reject")
+async def api_inbox_reject(body: InboxItemBody) -> dict[str, Any]:
+    try:
+        result = reject_inbox_item(body.name)
+    except FileNotFoundError as exc:
+        raise HTTPException(404, str(exc)) from exc
+    except ValueError as exc:
+        raise HTTPException(400, str(exc)) from exc
+    await broadcast({"type": "inbox_rejected", "name": body.name})
+    return {"result": result, "inbox": list_inbox()}
+
+
 @app.post("/api/inbox/scan")
 async def api_inbox_scan() -> dict[str, Any]:
+    """Approve all pending packs (explicit). Prefer per-item /approve in the UI."""
     results = scan_and_import_inbox()
     for r in results:
         if r.get("ok") and not r.get("skipped"):

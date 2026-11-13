@@ -62,7 +62,7 @@ python run.py
 1. Configure ComfyUI (+ chave de IA se for gerar roteiros **dentro** do app)
 2. **Nova história** no app **ou** peça a qualquer IA (Cursor / Claude / Copilot) para escrever um pack em `data/inbox/<slug>/`
 3. Spec para agentes: **[AI_STORY_INBOX.md](AI_STORY_INBOX.md)** · [AGENTS.md](AGENTS.md)
-4. UI **Inbox** → import automático (~5s) ou “Escanear agora” → enfileire
+4. UI **Inbox** → **Aprovar** o pack (não importa sozinho) → enfileire
 5. Master em `data/deliverables/<slug>/master.mp4`
 
 ### Defaults Continuity

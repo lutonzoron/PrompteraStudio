@@ -150,7 +150,17 @@ export default function App() {
           }
           if (data.type === "job_failed") setToast(`Falhou: ${data.error}`);
           if (data.type === "inbox_imported")
-            setToast(`Nova história importada: ${data.title || ""}`);
+            setToast(`História aprovada: ${data.title || ""}`);
+          if (data.type === "inbox_pending") {
+            const n = data.count || (data.names || []).length;
+            setToast(n ? `Inbox: ${n} pack(s) aguardando aprovação` : "Inbox atualizado");
+            beep();
+            notify("Inbox Promptera", `${n} pack(s) para aprovar`);
+            api.inbox().then(setInbox).catch(() => {});
+          }
+          if (data.type === "inbox_changed" || data.type === "inbox_rejected") {
+            api.inbox().then(setInbox).catch(() => {});
+          }
           if (
             (data.type === "external_sync" || data.type === "project_updated") &&
             data.project_id &&
@@ -200,6 +210,7 @@ export default function App() {
         onOpenStyles={openStyles}
         onOpenInbox={() => setSheet("inbox")}
         onComfyStart={() => api.comfyStart().then(refresh)}
+        inboxPending={inbox?.pending_count || inbox?.pending?.length || 0}
       >
         {error ? (
           <div className="alert bad" style={{ marginBottom: 14 }}>
