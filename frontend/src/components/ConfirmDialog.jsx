@@ -42,7 +42,7 @@ export function ConfirmProvider({ children }) {
       {children}
       {dialog ? (
         <div
-          className="backdrop confirm-backdrop"
+          className="confirm-backdrop"
           onClick={() => close(false)}
           role="presentation"
         >
@@ -54,6 +54,11 @@ export function ConfirmProvider({ children }) {
             aria-describedby="confirm-msg"
             onClick={(e) => e.stopPropagation()}
           >
+            {dialog.danger ? (
+              <div className="confirm-icon" aria-hidden="true">
+                !
+              </div>
+            ) : null}
             <h3 id="confirm-title">{dialog.title}</h3>
             <p id="confirm-msg" className="confirm-msg">
               {String(dialog.message)
@@ -66,7 +71,7 @@ export function ConfirmProvider({ children }) {
                 ))}
             </p>
             <div className="confirm-actions">
-              <button type="button" onClick={() => close(false)}>
+              <button type="button" className="ghost" onClick={() => close(false)}>
                 {dialog.cancelLabel}
               </button>
               <button

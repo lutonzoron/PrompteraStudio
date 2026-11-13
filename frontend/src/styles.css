@@ -1145,24 +1145,54 @@ input:focus, select:focus, textarea:focus {
 }
 .cta-cost strong { color: var(--accent); font-weight: 650; }
 
-/* —— Sheets / overlays —— */
+/* —— Confirm modal (centered card, not sheet drawer) —— */
 .confirm-backdrop {
+  position: fixed;
+  inset: 0;
   z-index: calc(var(--modal-z) + 20);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+  background: rgba(0, 0, 0, 0.68);
+  backdrop-filter: blur(4px);
+  animation: fade .18s ease;
 }
 .confirm-dialog {
-  width: min(420px, calc(100vw - 32px));
+  width: min(400px, calc(100vw - 40px));
+  height: auto;
+  max-height: none;
+  align-self: center;
+  flex: 0 0 auto;
   padding: 22px 22px 18px;
-  border-radius: 18px;
+  border-radius: 16px;
   border: 1px solid var(--line2);
-  background: #121412;
-  box-shadow: var(--shadow);
+  background: linear-gradient(180deg, #161816 0%, #101210 100%);
+  box-shadow: 0 24px 64px rgba(0, 0, 0, 0.55), var(--shadow);
   display: flex;
   flex-direction: column;
-  gap: 12px;
+  gap: 10px;
+  animation: confirmPop .2s ease;
+}
+@keyframes confirmPop {
+  from { transform: translateY(8px) scale(0.97); opacity: 0; }
+  to { transform: none; opacity: 1; }
 }
 .confirm-dialog.is-danger {
-  border-color: rgba(224, 85, 85, 0.45);
-  box-shadow: 0 0 0 1px rgba(224, 85, 85, 0.12), var(--shadow);
+  border-color: rgba(224, 85, 85, 0.4);
+}
+.confirm-icon {
+  width: 36px;
+  height: 36px;
+  border-radius: 10px;
+  display: grid;
+  place-items: center;
+  font-size: 18px;
+  font-weight: 800;
+  color: #ffb4b4;
+  background: rgba(224, 85, 85, 0.14);
+  border: 1px solid rgba(224, 85, 85, 0.35);
+  margin-bottom: 2px;
 }
 .confirm-dialog h3 {
   margin: 0;
@@ -1174,14 +1204,14 @@ input:focus, select:focus, textarea:focus {
 .confirm-msg {
   margin: 0;
   font-size: 14px;
-  line-height: 1.45;
+  line-height: 1.5;
   color: var(--muted);
 }
 .confirm-actions {
   display: flex;
   justify-content: flex-end;
   gap: 8px;
-  margin-top: 6px;
+  margin-top: 8px;
 }
 .confirm-actions .danger {
   background: #e05555;
@@ -1191,6 +1221,8 @@ input:focus, select:focus, textarea:focus {
 .confirm-actions .danger:hover {
   filter: brightness(1.06);
 }
+
+/* —— Sheets / overlays —— */
 .backdrop {
   position: fixed;
   inset: 0;
