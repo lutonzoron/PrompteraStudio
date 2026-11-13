@@ -1,5 +1,6 @@
 import React, { useEffect, useMemo, useState } from "react";
 import { api } from "../api.js";
+import { useConfirm } from "./ConfirmDialog.jsx";
 
 function initials(label) {
   return String(label || "?")
@@ -10,6 +11,7 @@ function initials(label) {
 }
 
 export default function StyleGallery({ styles, busy, setBusy, setToast, onChange }) {
+  const confirm = useConfirm();
   const [q, setQ] = useState("");
   const [selectedId, setSelectedId] = useState(styles[0]?.id || null);
   const [creating, setCreating] = useState(false);
@@ -220,7 +222,13 @@ export default function StyleGallery({ styles, busy, setBusy, setToast, onChange
                   className="danger"
                   disabled={busy}
                   onClick={async () => {
-                    if (!confirm(`Arquivar “${selected.label}”?`)) return;
+                    const ok = await confirm({
+                      title: "Arquivar estilo",
+                      message: `Arquivar “${selected.label}”?`,
+                      confirmLabel: "Arquivar",
+                      danger: true,
+                    });
+                    if (!ok) return;
                     setBusy(true);
                     try {
                       await api.archiveStyle(selected.id);

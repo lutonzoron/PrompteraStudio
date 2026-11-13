@@ -597,11 +597,11 @@ def api_patch_project(project_id: str, body: ProjectUpdateBody) -> dict[str, Any
 
 @app.delete("/api/projects/{project_id}")
 def api_delete_project(project_id: str, hard: bool = False) -> dict[str, Any]:
-    """Soft-archive by default (histórico preservado). hard=1 apaga de vez."""
+    """Soft-archive by default. hard=true apaga DB + pastas locais do projeto."""
     if not db.get_project(project_id):
         raise HTTPException(404)
     db.delete_project(project_id, hard=hard)
-    return {"ok": True, "archived": not hard}
+    return {"ok": True, "archived": not hard, "deleted": bool(hard)}
 
 
 @app.post("/api/projects/{project_id}/restore")

@@ -1,6 +1,7 @@
 import React, { useState } from "react";
 import { api } from "../api.js";
 import ContextMenu from "./ContextMenu.jsx";
+import { useConfirm } from "./ConfirmDialog.jsx";
 import { cleanTitle, fmtDate, initials, isNsfw, posterSrc, statusLabel } from "../utils.js";
 
 const FILTERS = [
@@ -108,8 +109,9 @@ function menuItemsFor(p) {
   if (archived) {
     items.push({ id: "restore", label: "Restaurar" });
   } else {
-    items.push({ id: "archive", label: "Arquivar", danger: true });
+    items.push({ id: "archive", label: "Arquivar" });
   }
+  items.push({ id: "delete", label: "Excluir permanente", danger: true });
   return items;
 }
 
@@ -147,6 +149,7 @@ export default function Library({
   onRefresh,
   setToast,
 }) {
+  const confirm = useConfirm();
   const [filter, setFilter] = useState("all");
   const [q, setQ] = useState("");
   const [menu, setMenu] = useState(null);
@@ -222,9 +225,27 @@ export default function Library({
         return;
       }
       if (actionId === "archive") {
-        if (!confirm(`Arquivar “${cleanTitle(p.title)}”?`)) return;
+        const ok = await confirm({
+          title: "Arquivar história",
+          message: `Arquivar “${cleanTitle(p.title)}”? Você pode restaurar depois.`,
+          confirmLabel: "Arquivar",
+        });
+        if (!ok) return;
         await api.deleteProject(p.id, false);
         setToast?.("Arquivada");
+        onRefresh?.();
+        return;
+      }
+      if (actionId === "delete") {
+        const ok = await confirm({
+          title: "Excluir permanentemente",
+          message: `Excluir “${cleanTitle(p.title)}”?\nIsso apaga o projeto e os arquivos locais. Não dá para desfazer.`,
+          confirmLabel: "Excluir",
+          danger: true,
+        });
+        if (!ok) return;
+        await api.deleteProject(p.id, true);
+        setToast?.("Excluída");
         onRefresh?.();
         return;
       }

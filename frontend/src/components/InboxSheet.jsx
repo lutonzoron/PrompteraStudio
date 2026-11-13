@@ -1,7 +1,9 @@
 import React from "react";
 import { api } from "../api.js";
+import { useConfirm } from "./ConfirmDialog.jsx";
 
 export default function InboxSheet({ inbox, busy, setBusy, setToast, onClose, onRefresh }) {
+  const confirm = useConfirm();
   const pending = inbox?.pending || [];
 
   async function refreshInbox() {
@@ -29,7 +31,13 @@ export default function InboxSheet({ inbox, busy, setBusy, setToast, onClose, on
   }
 
   async function rejectOne(name) {
-    if (!confirm(`Rejeitar “${name}”? O pack vai para _failed.`)) return;
+    const ok = await confirm({
+      title: "Rejeitar pack",
+      message: `Rejeitar “${name}”? O pack vai para _failed.`,
+      confirmLabel: "Rejeitar",
+      danger: true,
+    });
+    if (!ok) return;
     setBusy(true);
     try {
       await api.inboxReject(name);
@@ -44,7 +52,12 @@ export default function InboxSheet({ inbox, busy, setBusy, setToast, onClose, on
 
   async function approveAll() {
     if (!pending.length) return;
-    if (!confirm(`Aprovar todos os ${pending.length} pack(s)?`)) return;
+    const ok = await confirm({
+      title: "Aprovar todos",
+      message: `Aprovar todos os ${pending.length} pack(s) pendentes?`,
+      confirmLabel: "Aprovar todos",
+    });
+    if (!ok) return;
     setBusy(true);
     try {
       const r = await api.inboxScan();

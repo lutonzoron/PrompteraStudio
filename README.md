@@ -1,38 +1,38 @@
 # Promptera Studio
 
-Studio local para gerar vídeos com **MiniMax H3 + DaSiWa Continuity**: histórias e takes via API de IA, fila global, sync com runners externos, revisão take-a-take e masters concatenados sem empilhar Fulls do Continuity.
+Local studio for **MiniMax H3 + DaSiWa Continuity** video: AI story packs and takes, a global queue, sync with external runners, take-by-take review, and concatenated masters that do not restack Continuity Full outputs.
 
 UI: [http://127.0.0.1:8790](http://127.0.0.1:8790)
 
 ![Promptera Studio](frontend/public/logo-promptera.png)
 
-## O que faz
+## What it does
 
-- Biblioteca de projetos (SFW/NSFW) com filtros, capa e status (**Na fila** / **Gerando** / **Pronto**)
-- Fila flutuante: **geração atual** (ligada ao que o Comfy está rodando) + **na fila** arrastável
-- ETA calibrado (min/take, take atual, horário previsto, custo de energia)
-- Continuity Full: master = último take da sessão (não concatena t01+t02+… de novo)
-- Import inbox (`data/inbox/`) + runners externos (state JSON)
-- Onboarding: LLM, ComfyUI, DaSiWa, modelos, ffmpeg, tarifa R$/kWh
+- Project library (SFW/NSFW) with filters, cover art, and status (**Queued** / **Generating** / **Ready**)
+- Floating queue: **live job** (tied to what Comfy is running) + draggable **queued** list
+- Calibrated ETA (min/take, current take, estimated finish time, energy cost)
+- Continuity Full: master = last take of the session (does not re-concatenate t01+t02+…)
+- Inbox import (`data/inbox/`) + external runners (state JSON)
+- Onboarding: LLM, ComfyUI, DaSiWa, models, ffmpeg, electricity rate (R$/kWh)
 
-## Requisitos
+## Requirements
 
-| Item | Notas |
+| Item | Notes |
 |------|--------|
-| Python 3.10+ | backend FastAPI |
-| Node.js 18+ | build do frontend |
+| Python 3.10+ | FastAPI backend |
+| Node.js 18+ | frontend build |
 | ComfyUI + [ComfyUI-DaSiWa-Nodes](https://github.com/darksidewalker/ComfyUI-DaSiWa-Nodes) | Continuity H3 |
-| Modelos MiniMax H3 | SFW obrigatório no onboarding; NSFW opcional |
-| ffmpeg | no `PATH` |
-| API de IA | OpenAI / compatível / Ollama / Anthropic |
+| MiniMax H3 models | SFW required at onboarding; NSFW optional |
+| ffmpeg | on `PATH` |
+| AI API | OpenAI / compatible / Ollama / Anthropic |
 
-GPU: ~12 GB VRAM confortável (ex.: RTX 3060). 8 GB possível, mais lento.
+GPU: ~12 GB VRAM comfortable (e.g. RTX 3060). 8 GB possible, slower.
 
-## Instalação
+## Install
 
 ```powershell
-git clone https://github.com/<seu-usuario>/Promptera-Studio.git
-cd Promptera-Studio
+git clone https://github.com/lutonzoron/PrompteraStudio.git
+cd PrompteraStudio
 
 python -m venv .venv
 .\.venv\Scripts\Activate.ps1
@@ -44,12 +44,12 @@ npm run build
 cd ..
 
 python run.py
-# ou: start.bat
+# or: start.bat
 ```
 
-Abra http://127.0.0.1:8790 e complete o **Config / Onboarding**.
+Open http://127.0.0.1:8790 and complete **Config / Onboarding**.
 
-### Rede / LAN
+### Network / LAN
 
 ```powershell
 $env:PROMPTERA_HOST="0.0.0.0"
@@ -57,31 +57,31 @@ $env:PROMPTERA_PORT="8790"
 python run.py
 ```
 
-## Fluxo rápido
+## Quick flow
 
-1. Configure ComfyUI (+ chave de IA se for gerar roteiros **dentro** do app)
-2. **Nova história** no app **ou** peça a qualquer IA (Cursor / Claude / Copilot) para escrever um pack em `data/inbox/<slug>/`
-3. Spec para agentes: **[AI_STORY_INBOX.md](AI_STORY_INBOX.md)** · [AGENTS.md](AGENTS.md)
-4. UI **Inbox** → **Aprovar** o pack (não importa sozinho) → enfileire
-5. Master em `data/deliverables/<slug>/master.mp4`
+1. Configure ComfyUI (+ an AI key if you generate scripts **inside** the app)
+2. **New story** in the app **or** ask any AI (Cursor / Claude / Copilot) to write a pack under `data/inbox/<slug>/`
+3. Agent spec: **[AI_STORY_INBOX.md](AI_STORY_INBOX.md)** · [AGENTS.md](AGENTS.md)
+4. **Inbox** UI → **Approve** the pack (it does not auto-import) → enqueue
+5. Master at `data/deliverables/<slug>/master.mp4`
 
-### Defaults Continuity
+### Continuity defaults
 
 - 544×992 · 24 fps · euler · 8 steps · overlap 22 · `output_mode: full`
-- Take 2–15 s (default 5) · blocos curtos (≤3–4 takes)
+- Take length 2–15 s (default 5) · short blocks (≤3–4 takes)
 
-## Estrutura
+## Layout
 
 ```text
-app/           # FastAPI, LLM, Continuity, fila, sync externo, ETA
+app/           # FastAPI, LLM, Continuity, queue, external sync, ETA
 frontend/      # React + Vite
-bundled/       # workflows + seeds de estilo
-data/          # SQLite, deliverables, inbox (não versionado)
-scripts/       # utilitários de import/sync
-run.py         # sobe em :8790
+bundled/       # workflows + style seeds
+data/          # SQLite, deliverables, inbox (not versioned)
+scripts/       # import/sync utilities
+run.py         # serves on :8790
 ```
 
-## Desenvolvimento
+## Development
 
 ```powershell
 # terminal A — API
@@ -92,14 +92,14 @@ cd frontend
 npm run dev
 ```
 
-Vite: http://127.0.0.1:5179 (proxy `/api` → 8790).
+Vite: http://127.0.0.1:5179 (proxies `/api` → 8790).
 
-## Privacidade
+## Privacy
 
-- API keys e DB ficam só em `data/` (ignorados pelo Git)
-- Não commite `.env`, `studio.db` nem vídeos de deliverables
-- NSFW: capas não são geradas automaticamente
+- API keys and the DB stay under `data/` (Git-ignored)
+- Do not commit `.env`, `studio.db`, or deliverable videos
+- NSFW: covers are not generated automatically
 
-## Licença
+## License
 
-Uso pessoal / local. Workflows de terceiros (DaSiWa, MiniMax) seguem as licenças dos autores originais.
+Personal / local use. Third-party workflows (DaSiWa, MiniMax) follow their original authors’ licenses.

@@ -34,6 +34,66 @@ body {
     radial-gradient(700px 400px at 0% 100%, #122018 0%, transparent 50%),
     var(--bg);
   -webkit-font-smoothing: antialiased;
+  scrollbar-width: thin;
+  scrollbar-color: #3d4a30 transparent;
+}
+
+/* Custom scrollbars (Chrome / Edge / Safari) */
+*::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+*::-webkit-scrollbar-track {
+  background: transparent;
+  border-radius: 999px;
+}
+*::-webkit-scrollbar-thumb {
+  background: linear-gradient(180deg, #3a4a2e 0%, #2a3424 100%);
+  border-radius: 999px;
+  border: 2px solid transparent;
+  background-clip: padding-box;
+}
+*::-webkit-scrollbar-thumb:hover {
+  background: linear-gradient(180deg, var(--accent-dim) 0%, #6a8a1a 100%);
+  background-clip: padding-box;
+  border: 2px solid transparent;
+}
+*::-webkit-scrollbar-corner {
+  background: transparent;
+}
+*::-webkit-resizer {
+  background: linear-gradient(135deg, transparent 50%, #3a453a 50%);
+}
+
+textarea,
+pre,
+.pp-shot-prompt,
+.sheet-body,
+.queue-dock-body,
+.style-pre,
+.shot-list {
+  scrollbar-width: thin;
+  scrollbar-color: #4a5c38 #121612;
+}
+textarea::-webkit-scrollbar-track,
+.pp-shot-prompt::-webkit-scrollbar-track,
+pre::-webkit-scrollbar-track {
+  background: rgba(0, 0, 0, 0.25);
+  margin: 4px 0;
+}
+textarea::-webkit-scrollbar-thumb,
+.pp-shot-prompt::-webkit-scrollbar-thumb,
+pre::-webkit-scrollbar-thumb {
+  background: #455536;
+  border: 2px solid transparent;
+  background-clip: padding-box;
+}
+textarea::-webkit-scrollbar-thumb:hover,
+.pp-shot-prompt::-webkit-scrollbar-thumb:hover,
+pre::-webkit-scrollbar-thumb:hover {
+  background: var(--accent-dim);
+  background-clip: padding-box;
+  border: 2px solid transparent;
 }
 
 button, input, select, textarea { font: inherit; color: inherit; }
@@ -1086,6 +1146,51 @@ input:focus, select:focus, textarea:focus {
 .cta-cost strong { color: var(--accent); font-weight: 650; }
 
 /* —— Sheets / overlays —— */
+.confirm-backdrop {
+  z-index: calc(var(--modal-z) + 20);
+}
+.confirm-dialog {
+  width: min(420px, calc(100vw - 32px));
+  padding: 22px 22px 18px;
+  border-radius: 18px;
+  border: 1px solid var(--line2);
+  background: #121412;
+  box-shadow: var(--shadow);
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+.confirm-dialog.is-danger {
+  border-color: rgba(224, 85, 85, 0.45);
+  box-shadow: 0 0 0 1px rgba(224, 85, 85, 0.12), var(--shadow);
+}
+.confirm-dialog h3 {
+  margin: 0;
+  font-family: var(--display);
+  font-size: 18px;
+  font-weight: 800;
+  letter-spacing: -0.02em;
+}
+.confirm-msg {
+  margin: 0;
+  font-size: 14px;
+  line-height: 1.45;
+  color: var(--muted);
+}
+.confirm-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  margin-top: 6px;
+}
+.confirm-actions .danger {
+  background: #e05555;
+  border-color: #e05555;
+  color: #fff;
+}
+.confirm-actions .danger:hover {
+  filter: brightness(1.06);
+}
 .backdrop {
   position: fixed;
   inset: 0;

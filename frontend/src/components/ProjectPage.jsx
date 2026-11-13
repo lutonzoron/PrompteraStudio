@@ -1,5 +1,6 @@
 import React, { useEffect, useMemo, useState } from "react";
 import { api } from "../api.js";
+import { useConfirm } from "./ConfirmDialog.jsx";
 import { cleanTitle, fmtDate, isNsfw, posterSrc, statusLabel } from "../utils.js";
 
 function reviewLabel(mode) {
@@ -15,6 +16,7 @@ export default function ProjectPage({
   onRefresh,
   onBack,
 }) {
+  const confirm = useConfirm();
   const [estimate, setEstimate] = useState(project?.estimate || null);
   const [masterOk, setMasterOk] = useState(!!project?.has_master || !!project?.master_url);
   const [focusTake, setFocusTake] = useState(null);
@@ -410,9 +412,13 @@ export default function ProjectPage({
               ) : (
                 <button
                   type="button"
-                  className="danger"
                   onClick={async () => {
-                    if (!confirm("Arquivar esta história?")) return;
+                    const ok = await confirm({
+                      title: "Arquivar história",
+                      message: `Arquivar “${cleanTitle(project.title)}”? Você pode restaurar depois.`,
+                      confirmLabel: "Arquivar",
+                    });
+                    if (!ok) return;
                     await api.deleteProject(project.id, false);
                     setToast("Arquivada");
                     onBack();
@@ -422,6 +428,25 @@ export default function ProjectPage({
                   Arquivar
                 </button>
               )}
+              <button
+                type="button"
+                className="danger"
+                onClick={async () => {
+                  const ok = await confirm({
+                    title: "Excluir permanentemente",
+                    message: `Excluir “${cleanTitle(project.title)}”?\nApaga o projeto e os arquivos locais. Não dá para desfazer.`,
+                    confirmLabel: "Excluir",
+                    danger: true,
+                  });
+                  if (!ok) return;
+                  await api.deleteProject(project.id, true);
+                  setToast("Excluída");
+                  onBack();
+                  onRefresh();
+                }}
+              >
+                Excluir
+              </button>
             </div>
           </div>
         </aside>

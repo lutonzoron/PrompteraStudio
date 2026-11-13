@@ -1,6 +1,7 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import { api } from "../api.js";
 import ContextMenu from "./ContextMenu.jsx";
+import { useConfirm } from "./ConfirmDialog.jsx";
 import { cleanTitle, initials, isNsfw, posterSrc, statusLabel } from "../utils.js";
 
 function QueueThumb({ project }) {
@@ -60,6 +61,7 @@ function waitingStatusLine(p, comfyQ) {
 }
 
 export default function QueueDock({ queue, onOpenReview, onRefresh, setToast, onOpenProject }) {
+  const confirm = useConfirm();
   const [open, setOpen] = useState(true);
   const [menu, setMenu] = useState(null);
   const [busy, setBusy] = useState(false);
@@ -166,9 +168,26 @@ export default function QueueDock({ queue, onOpenReview, onRefresh, setToast, on
     try {
       if (id === "open" && onOpenProject) onOpenProject(p.id);
       if (id === "archive") {
-        if (!confirm(`Arquivar “${cleanTitle(p.title)}”?`)) return;
+        const ok = await confirm({
+          title: "Arquivar história",
+          message: `Arquivar “${cleanTitle(p.title)}”? Você pode restaurar depois.`,
+          confirmLabel: "Arquivar",
+        });
+        if (!ok) return;
         await api.deleteProject(p.id, false);
         setToast("Arquivada");
+        onRefresh();
+      }
+      if (id === "delete") {
+        const ok = await confirm({
+          title: "Excluir permanentemente",
+          message: `Excluir “${cleanTitle(p.title)}”?\nApaga o projeto e os arquivos locais. Não dá para desfazer.`,
+          confirmLabel: "Excluir",
+          danger: true,
+        });
+        if (!ok) return;
+        await api.deleteProject(p.id, true);
+        setToast("Excluída");
         onRefresh();
       }
       if (id === "dequeue") {
@@ -511,7 +530,8 @@ export default function QueueDock({ queue, onOpenReview, onRefresh, setToast, on
               : [{ id: "resume", label: "Retomar fila" }]),
             { id: "dequeue", label: "Tirar da fila" },
             { sep: true },
-            { id: "archive", label: "Arquivar", danger: true },
+            { id: "archive", label: "Arquivar" },
+            { id: "delete", label: "Excluir permanente", danger: true },
           ]}
           onClose={() => setMenu(null)}
           onPick={(id) => runQueueAction(id, menu.project)}

@@ -10,6 +10,7 @@ import ReviewModal from "./components/ReviewModal.jsx";
 import Settings from "./components/Settings.jsx";
 import StyleGallery from "./components/StyleGallery.jsx";
 import InboxSheet from "./components/InboxSheet.jsx";
+import { ConfirmProvider } from "./components/ConfirmDialog.jsx";
 
 function readHashProjectId() {
   const m = String(window.location.hash || "").match(/^#\/p\/([^/]+)/);
@@ -199,7 +200,7 @@ export default function App() {
   }, [queue, review]);
 
   return (
-    <>
+    <ConfirmProvider>
       <Shell
         health={health}
         pendingReviews={pendingReviews}
@@ -319,6 +320,6 @@ export default function App() {
       ) : null}
 
       {toast ? <div className="toast">{toast}</div> : null}
-    </>
+    </ConfirmProvider>
   );
 }

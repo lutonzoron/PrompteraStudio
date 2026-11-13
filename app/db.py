@@ -451,10 +451,15 @@ def archive_project(project_id: str) -> dict[str, Any] | None:
 
 
 def delete_project(project_id: str, *, hard: bool = False) -> None:
-    """Default: soft-archive. hard=True removes permanently."""
+    """Default: soft-archive. hard=True removes permanently (DB + local folders)."""
     if not hard:
         archive_project(project_id)
         return
+    import shutil
+    from .config import DELIVERABLES_DIR, PROJECTS_DIR
+
+    project = get_project(project_id)
+    slug = (project or {}).get("slug") if project else None
     with _lock:
         c = _conn()
         try:
@@ -464,6 +469,20 @@ def delete_project(project_id: str, *, hard: bool = False) -> None:
             c.commit()
         finally:
             c.close()
+    # Best-effort cleanup of project assets (not Comfy output/)
+    for path in (
+        PROJECTS_DIR / str(project_id),
+        DELIVERABLES_DIR / str(slug) if slug else None,
+    ):
+        if path is None:
+            continue
+        try:
+            if path.is_dir():
+                shutil.rmtree(path, ignore_errors=True)
+            elif path.is_file():
+                path.unlink(missing_ok=True)
+        except OSError:
+            pass
 
 
 def projects_awaiting_review() -> list[dict[str, Any]]:

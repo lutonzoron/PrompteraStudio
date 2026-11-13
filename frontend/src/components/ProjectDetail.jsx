@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from "react";
 import { api } from "../api.js";
+import { useConfirm } from "./ConfirmDialog.jsx";
 import { initials, isNsfw, posterSrc, statusLabel } from "../utils.js";
 
 export default function ProjectDetail({
@@ -11,6 +12,7 @@ export default function ProjectDetail({
   onRefresh,
   onClose,
 }) {
+  const confirm = useConfirm();
   const [estimate, setEstimate] = useState(project?.estimate || null);
   const [posterErr, setPosterErr] = useState(false);
   const [masterOk, setMasterOk] = useState(!!project?.has_master || !!project?.master_url);
@@ -208,9 +210,13 @@ export default function ProjectDetail({
           ) : (
             <button
               type="button"
-              className="danger"
               onClick={async () => {
-                if (!confirm("Arquivar esta história?")) return;
+                const ok = await confirm({
+                  title: "Arquivar história",
+                  message: "Arquivar esta história? Você pode restaurar depois.",
+                  confirmLabel: "Arquivar",
+                });
+                if (!ok) return;
                 await api.deleteProject(project.id, false);
                 setToast("Arquivada");
                 onClose();
@@ -220,6 +226,26 @@ export default function ProjectDetail({
               Arquivar
             </button>
           )}
+          <button
+            type="button"
+            className="danger"
+            onClick={async () => {
+              const ok = await confirm({
+                title: "Excluir permanentemente",
+                message:
+                  "Excluir esta história?\nApaga o projeto e os arquivos locais. Não dá para desfazer.",
+                confirmLabel: "Excluir",
+                danger: true,
+              });
+              if (!ok) return;
+              await api.deleteProject(project.id, true);
+              setToast("Excluída");
+              onClose();
+              onRefresh();
+            }}
+          >
+            Excluir
+          </button>
         </div>
       </div>
     </aside>
