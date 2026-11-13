@@ -1,17 +1,26 @@
 # Cursor → Promptera Inbox
 
-Full agent spec (any AI): **[AI_STORY_INBOX.md](AI_STORY_INBOX.md)**
+Full agent spec (any AI): **[AI_STORY_INBOX.md](AI_STORY_INBOX.md)**  
+Same Continuity rules as the MiniMax H3 + DaSiWa skill.
 
 ## Quick drop
 
 ```text
 data/inbox/<slug>/
-  takes.json   # required
-  meta.json    # optional
-  roteiro.md   # optional
+  takes.json   # required — prompts in ENGLISH
+  meta.json    # optional — title/brief may be PT
+  roteiro.md   # optional — human script may be PT
 ```
 
-Promptera detects the pack (~5s toast) but **waits for approval**: UI **Inbox → Aprovar**.
+### Language
+
+| What | Language |
+|------|----------|
+| `takes.json` → `prompt` | English (locks, action, spatial, SFX) |
+| Dialogue only | `<d>[Portuguese] …</d>` |
+| Roteiro / meta title | Portuguese OK |
+
+Promptera detects the pack (~5s) but **waits for approval**: UI **Inbox → Aprovar**.
 
 ## Roles
 
