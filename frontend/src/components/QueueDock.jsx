@@ -4,6 +4,14 @@ import ContextMenu from "./ContextMenu.jsx";
 import { useConfirm } from "./ConfirmDialog.jsx";
 import { cleanTitle, initials, isNsfw, posterSrc, statusLabel } from "../utils.js";
 import { useT } from "../i18n/index.jsx";
+import { runProjectAction, useProjectActions } from "../projectActions.js";
+
+function queueDuration(minutes) {
+  const value = Number(minutes);
+  if (!Number.isFinite(value) || value < 0) return "—";
+  const total = Math.round(value);
+  return `${Math.floor(total / 60)} h ${String(total % 60).padStart(2, "0")} min`;
+}
 
 function QueueThumb({ project }) {
   const [err, setErr] = useState(false);
@@ -63,9 +71,11 @@ function waitingStatusLine(p, comfyQ, t) {
   return statusLabel(p.status, t);
 }
 
-export default function QueueDock({ queue, onOpenReview, onRefresh, setToast, onOpenProject }) {
+export default function QueueDock({ queue, onOpenReview, onRefresh, setToast, onOpenProject, prioritizeAvailable = false }) {
   const t = useT();
   const confirm = useConfirm();
+  const pendingActions = useProjectActions();
+  const busyRef = useRef(false);
   const [open, setOpen] = useState(true);
   const [menu, setMenu] = useState(null);
   const [busy, setBusy] = useState(false);
@@ -126,14 +136,17 @@ export default function QueueDock({ queue, onOpenReview, onRefresh, setToast, on
       : t("queue.generatingEllipsis"));
 
   async function run(fn, okMsg) {
+    if (busyRef.current) return;
+    busyRef.current = true;
     setBusy(true);
     try {
       await fn();
       if (okMsg) setToast(okMsg);
-      onRefresh();
+      await onRefresh();
     } catch (e) {
       setToast(String(e.message || e));
     } finally {
+      busyRef.current = false;
       setBusy(false);
     }
   }
@@ -155,16 +168,19 @@ export default function QueueDock({ queue, onOpenReview, onRefresh, setToast, on
   }
 
   async function commitReorder(next) {
+    if (busyRef.current) return;
+    busyRef.current = true;
     setOrderedWaiting(next);
     setBusy(true);
     try {
       await persistOrder(next);
       setToast(t("queue.reorderToast"));
-      onRefresh();
+      await onRefresh();
     } catch (e) {
       setToast(String(e.message || e));
       setOrderedWaiting(waitingFromServer);
     } finally {
+      busyRef.current = false;
       setBusy(false);
     }
   }
@@ -172,6 +188,10 @@ export default function QueueDock({ queue, onOpenReview, onRefresh, setToast, on
   const menuItems = useMemo(
     () => (project) => [
       { id: "open", label: t("queue.openProject") },
+      ...(!project?.external && !project?.is_active ? [{
+        id: "prioritize", label: t("queue.prioritize"), disabled: !prioritizeAvailable,
+        title: t(prioritizeAvailable ? "queue.prioritizeHint" : "queue.prioritizeNeedsRestart"),
+      }] : []),
       ...(project?.external
         ? [{ id: "sync", label: t("queue.sync") }]
         : [{ id: "resume", label: t("queue.resumeQueue") }]),
@@ -180,54 +200,70 @@ export default function QueueDock({ queue, onOpenReview, onRefresh, setToast, on
       { id: "archive", label: t("queue.archive") },
       { id: "delete", label: t("queue.deletePermanent"), danger: true },
     ],
-    [t]
+    [t, prioritizeAvailable]
   );
 
   async function runQueueAction(id, p) {
-    try {
-      if (id === "open" && onOpenProject) onOpenProject(p.id);
-      if (id === "archive") {
-        const ok = await confirm({
-          title: t("queue.archiveTitle"),
-          message: t("queue.archiveMsg", { title: cleanTitle(p.title) }),
-          confirmLabel: t("queue.archive"),
-        });
-        if (!ok) return;
-        await api.deleteProject(p.id, false);
-        setToast(t("queue.archivedToast"));
-        onRefresh();
+    if (busyRef.current) return;
+    const actionLabel = menuItems(p).find((item) => item.id === id)?.label || id;
+    return runProjectAction(p.id, t("actions.pending", { action: actionLabel, title: cleanTitle(p.title) }), async () => {
+      busyRef.current = true;
+      setBusy(true);
+      try {
+        if (id === "open" && onOpenProject) await onOpenProject(p.id);
+        if (id === "archive") {
+          const ok = await confirm({
+            title: t("queue.archiveTitle"),
+            message: t("queue.archiveMsg", { title: cleanTitle(p.title) }),
+            confirmLabel: t("queue.archive"),
+          });
+          if (!ok) return;
+          await api.deleteProject(p.id, false);
+          setToast(t("queue.archivedToast"));
+          await onRefresh();
+        }
+        if (id === "delete") {
+          const ok = await confirm({
+            title: t("queue.deleteTitle"),
+            message: t("queue.deleteMsg", { title: cleanTitle(p.title) }),
+            confirmLabel: t("common.delete"),
+            danger: true,
+          });
+          if (!ok) return;
+          await api.deleteProject(p.id, true);
+          setToast(t("queue.deletedToast"));
+          await onRefresh();
+        }
+        if (id === "dequeue") {
+          await api.dequeue(p.id);
+          setToast(t("queue.dequeueToast"));
+          await onRefresh();
+        }
+        if (id === "prioritize") {
+          const result = await api.prioritize(p.id);
+          setToast(t(result.interrupted_project_id ? "queue.prioritizedWithResume" : "queue.prioritized"));
+          await onRefresh();
+        }
+        if (id === "resume") {
+          await api.resume();
+          setToast(t("queue.resumeInternalToast"));
+          await onRefresh();
+        }
+        if (id === "sync") {
+          await api.externalSync();
+          setToast(t("queue.syncExternalToast"));
+          await onRefresh();
+        }
+      } catch (e) {
+        setToast(String(e.message || e));
+      } finally {
+        busyRef.current = false;
+        setBusy(false);
       }
-      if (id === "delete") {
-        const ok = await confirm({
-          title: t("queue.deleteTitle"),
-          message: t("queue.deleteMsg", { title: cleanTitle(p.title) }),
-          confirmLabel: t("common.delete"),
-          danger: true,
-        });
-        if (!ok) return;
-        await api.deleteProject(p.id, true);
-        setToast(t("queue.deletedToast"));
-        onRefresh();
-      }
-      if (id === "dequeue") {
-        await api.dequeue(p.id);
-        setToast(t("queue.dequeueToast"));
-        onRefresh();
-      }
-      if (id === "resume") {
-        await api.resume();
-        setToast(t("queue.resumeInternalToast"));
-        onRefresh();
-      }
-      if (id === "sync") {
-        await api.externalSync();
-        setToast(t("queue.syncExternalToast"));
-        onRefresh();
-      }
-    } catch (e) {
-      setToast(String(e.message || e));
-    }
+    });
   }
+
+  const menuProject = menu ? items.find((p) => p.id === menu.project.id) || menu.project : null;
 
   let comfyLine = null;
   if (comfyQ) {
@@ -260,7 +296,7 @@ export default function QueueDock({ queue, onOpenReview, onRefresh, setToast, on
               {externalOnly || hasExternal ? (
                 <IconBtn
                   title={t("queue.sync")}
-                  disabled={busy}
+                  disabled={busy || pendingActions.size > 0}
                   onClick={() => run(() => api.externalSync(), t("queue.syncOk"))}
                 >
                   ↻
@@ -269,7 +305,7 @@ export default function QueueDock({ queue, onOpenReview, onRefresh, setToast, on
               {hasPaused || (!active && !external && !now && !externalOnly) ? (
                 <IconBtn
                   title={t("queue.resumeInternal")}
-                  disabled={busy}
+                  disabled={busy || pendingActions.size > 0}
                   onClick={() => run(() => api.resume(), t("queue.resumed"))}
                 >
                   ▶
@@ -277,7 +313,7 @@ export default function QueueDock({ queue, onOpenReview, onRefresh, setToast, on
               ) : (
                 <IconBtn
                   title={externalOnly ? t("queue.pauseComfy") : t("queue.pauseQueue")}
-                  disabled={busy}
+                  disabled={busy || pendingActions.size > 0}
                   onClick={() =>
                     run(
                       async () => {
@@ -340,7 +376,7 @@ export default function QueueDock({ queue, onOpenReview, onRefresh, setToast, on
                     {generating.external ? (
                       <IconBtn
                         title={t("queue.sync")}
-                        disabled={busy}
+                        disabled={busy || pendingActions.size > 0}
                         onClick={() => run(() => api.externalSync(), t("queue.syncOk"))}
                       >
                         ↻
@@ -349,7 +385,7 @@ export default function QueueDock({ queue, onOpenReview, onRefresh, setToast, on
                     <IconBtn
                       title={t("queue.dequeue")}
                       danger
-                      disabled={busy}
+                      disabled={busy || pendingActions.size > 0}
                       onClick={() =>
                         run(async () => {
                           await api.dequeue(generating.id);
@@ -387,7 +423,7 @@ export default function QueueDock({ queue, onOpenReview, onRefresh, setToast, on
                 </div>
               ) : null}
               <div className="cta-cost" style={{ margin: 0 }}>
-                {t("queue.queueEta")} <strong>{estimate.total_min} min</strong>
+                {t("queue.queueEta")} <strong>{queueDuration(estimate.total_min)}</strong>
                 {estimate.finish_at ? (
                   <>
                     {" "}
@@ -407,6 +443,7 @@ export default function QueueDock({ queue, onOpenReview, onRefresh, setToast, on
           {pending.length > 0 ? (
             <section className="q-section">
               <div className="q-section-label">{t("queue.reviewSection")}</div>
+              <div className="q-review-list">
               {pending.map((p) => (
                 <div key={`rev-${p.id}`} className="queue-item">
                   <QueueThumb project={p} />
@@ -434,24 +471,26 @@ export default function QueueDock({ queue, onOpenReview, onRefresh, setToast, on
                   </button>
                 </div>
               ))}
+              </div>
             </section>
           ) : null}
 
           {waiting.length > 0 ? (
-            <section className="q-section">
+            <section className="q-section q-waiting-section">
               <div className="q-section-label">
                 {t("queue.waiting")}{" "}
                 <span className="muted">
                   {t("queue.waitingHint", { n: waiting.length })}
                 </span>
               </div>
+              <div className="q-waiting-list" role="region" aria-label={t("queue.waiting")} tabIndex={0}>
               {waiting.map((p, idx) => (
                 <div
                   key={p.id}
                   className={`queue-item is-waiting ${dragId === p.id ? "is-dragging" : ""} ${
                     overId === p.id && dragId !== p.id ? "drag-over" : ""
                   }`}
-                  draggable={!busy}
+                  draggable={!busy && !pendingActions.has(p.id)}
                   onDragStart={(e) => {
                     draggingRef.current = true;
                     setDragId(p.id);
@@ -494,6 +533,9 @@ export default function QueueDock({ queue, onOpenReview, onRefresh, setToast, on
                   <QueueThumb project={p} />
                   <div className="queue-item-main">
                     <strong style={{ fontSize: 13 }}>{cleanTitle(p.title)}</strong>
+                    {pendingActions.has(p.id) && <div className="project-action-pending">
+                      <span className="request-spinner" aria-hidden="true" /> {pendingActions.get(p.id)}
+                    </div>}
                     <div className="muted">
                       {waitingStatusLine(p, comfyQ, t)}
                       {" · "}
@@ -515,10 +557,19 @@ export default function QueueDock({ queue, onOpenReview, onRefresh, setToast, on
                     ) : null}
                   </div>
                   <div className="queue-item-actions">
+                    {!p.external && <button type="button" className="q-prioritize"
+                      title={t("queue.prioritize")}
+                      aria-label={t("queue.prioritize")}
+                      disabled={!prioritizeAvailable || busy || pendingActions.size > 0}
+                      onClick={(e) => { e.stopPropagation(); void runQueueAction("prioritize", p); }}>
+                      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+                        <path d="M12 19V5m-6 6 6-6 6 6" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+                      </svg>
+                    </button>}
                     {p.external ? (
                       <IconBtn
                         title={t("queue.sync")}
-                        disabled={busy}
+                        disabled={busy || pendingActions.size > 0}
                         onClick={() => run(() => api.externalSync(), t("queue.syncOk"))}
                       >
                         ↻
@@ -527,7 +578,7 @@ export default function QueueDock({ queue, onOpenReview, onRefresh, setToast, on
                     <IconBtn
                       title={t("queue.dequeue")}
                       danger
-                      disabled={busy}
+                      disabled={busy || pendingActions.size > 0}
                       onClick={() =>
                         run(async () => {
                           await api.dequeue(p.id);
@@ -540,6 +591,7 @@ export default function QueueDock({ queue, onOpenReview, onRefresh, setToast, on
                   </div>
                 </div>
               ))}
+              </div>
             </section>
           ) : null}
 
@@ -555,9 +607,10 @@ export default function QueueDock({ queue, onOpenReview, onRefresh, setToast, on
         <ContextMenu
           x={menu.x}
           y={menu.y}
-          items={menuItems(menu.project)}
+          items={menuItems(menuProject).map((item) => ({ ...item, disabled: busy || item.disabled }))}
+          pendingLabel={pendingActions.get(menuProject.id)}
           onClose={() => setMenu(null)}
-          onPick={(id) => runQueueAction(id, menu.project)}
+          onPick={(id) => runQueueAction(id, menuProject)}
         />
       ) : null}
     </div>

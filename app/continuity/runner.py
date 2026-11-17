@@ -4,6 +4,7 @@ import json
 import shutil
 import subprocess
 import time
+import tempfile
 from pathlib import Path
 from typing import Any, Awaitable, Callable
 
@@ -44,7 +45,7 @@ def output_root() -> Path:
     return comfy_root() / "output"
 
 
-def latest_ready_clip(session: str) -> str:
+def latest_ready_clip(session: str, before_ts: float | None = None) -> str:
     root = ckpt_root() / session
     if not root.exists():
         raise FileNotFoundError(f"No session dir {root}")
@@ -54,6 +55,8 @@ def latest_ready_clip(session: str) -> str:
             continue
         meta_path = clip_dir / "clip.json"
         if not meta_path.exists():
+            continue
+        if before_ts is not None and meta_path.stat().st_mtime > before_ts:
             continue
         meta = json.loads(meta_path.read_text(encoding="utf-8"))
         status = meta.get("status")
@@ -119,6 +122,20 @@ def concat_master(session_mp4s: list[Path], out_path: Path) -> Path:
     out_path.parent.mkdir(parents=True, exist_ok=True)
     if not session_mp4s:
         raise RuntimeError("Nenhum MP4 para concat")
+    # Publish only complete MP4s. Players may still be reading the previous version.
+    with tempfile.TemporaryDirectory(prefix=".master-", dir=out_path.parent) as temporary:
+        staged = Path(temporary) / "master.mp4"
+        _concat_master_files(session_mp4s, staged)
+        try:
+            staged.replace(out_path)
+        except PermissionError:
+            # Windows players can hold the previous file open without delete sharing.
+            out_path = out_path.with_name(f"{out_path.stem}_{time.time_ns()}{out_path.suffix}")
+            staged.replace(out_path)
+    return out_path
+
+
+def _concat_master_files(session_mp4s: list[Path], out_path: Path) -> Path:
     if len(session_mp4s) == 1:
         shutil.copy2(session_mp4s[0], out_path)
         return out_path
@@ -394,7 +411,14 @@ class ContinuityRunner:
         if kind == "new":
             tl = self.timeline_new(session, prompt_text, dur)
         elif kind == "continue":
-            source_id = latest_ready_clip(session)
+            state = db.get_runner_state(self.project['id'])
+            source_id = (state.get('session_checkpoints') or {}).get(session)
+            if not source_id:
+                last_ok = state.get('last_ok') or {}
+                previous = next((t for t in self.project.get('takes', [])
+                                 if int(t['n']) == last_ok.get('n')), {})
+                cutoff = last_ok.get('ts') if previous.get('session') == session else None
+                source_id = latest_ready_clip(session, before_ts=cutoff)
             tl = self.timeline_continue(session, source_id, prompt_text, dur)
         else:
             raise ValueError(kind)
@@ -414,6 +438,8 @@ class ContinuityRunner:
         mp4 = find_output_mp4(take["prefix"], t0) or find_latest_session_mp4(session)
         if not mp4:
             raise RuntimeError(f"MP4 não encontrado após {label}")
+        await self._progress(f"Take {n} renderizado em {time.time() - t0:.1f}s", 0.9,
+                             {"take": n, "prompt_id": prompt_id})
         return mp4
 
     async def run_all(self) -> dict[str, Any]:
@@ -475,6 +501,7 @@ class ContinuityRunner:
                     }
                 )
                 if decision == "reject":
+                    await self._progress(f"Take {n} rejeitado; preparando nova tentativa", pct, {"take": n})
                     quarantine_latest_ready(ckpt_root() / take["session"])
                     # bump seed
                     take["seed"] = int(take.get("seed") or 2000) + 17
@@ -492,7 +519,10 @@ class ContinuityRunner:
             done.add(n)
             state["completed"] = sorted(done)
             state["last_ok"] = {"n": n, "ts": time.time(), "mp4": str(mp4)}
+            state.setdefault('session_checkpoints', {})[take['session']] = latest_ready_clip(take['session'])
             db.save_runner_state(self.project["id"], state)
+            await self._progress(f"Take {n}/{total} concluído", len(done) / max(1, total) * 100,
+                                 {"take": n, "total": total})
             i += 1
 
         # concat last of each session in first-seen order
@@ -508,6 +538,7 @@ class ContinuityRunner:
                 mp4s.append(p)
         master = self.review_dir / "master.mp4"
         if mp4s:
-            concat_master(mp4s, master)
+            await self._progress("Montando vídeo final", 99.0, {"master": str(master)})
+            master = concat_master(mp4s, master)
         await self._progress("Concluído", 100.0, {"master": str(master)})
         return {"master": str(master), "completed": sorted(done), "sessions": order}

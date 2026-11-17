@@ -12,13 +12,14 @@ from typing import Any, Callable, Awaitable
 import httpx
 
 from .. import db
+from ..config import DATA_DIR
 from ..onboarding.setup import comfy_root
 
 
 ProgressCb = Callable[[str, float], Awaitable[None] | None]
 
 _PREFIX_RX = re.compile(
-    r"(?:^|/)video/([^/]+)/t(\d{1,2})\b|(?:^|/)([^/]+)/t(\d{1,2})\b",
+    r"(?:^|/)video/([^/]+)/t(\d+)(?=[_./-]|$)|(?:^|/)([^/]+)/t(\d+)(?=[_./-]|$)",
     re.I,
 )
 _CLIENT_RX = re.compile(
@@ -63,7 +64,7 @@ def _parse_comfy_item(item: Any) -> dict[str, Any] | None:
     if slug is None and client_id:
         # milk-htf-8 / promptera-vila_lele_01_esconde_casco-2
         cid = client_id
-        m_take = re.search(r"[-_](\d{1,2})$", cid)
+        m_take = re.search(r"[-_](\d+)$", cid)
         if m_take:
             take = take or int(m_take.group(1))
             cid = cid[: m_take.start()]
@@ -127,15 +128,27 @@ class ComfyClient:
         }
 
     async def queue_prompt(self, prompt: dict, client_id: str) -> str:
+        from .validation import validate_prompt, describe_rejection
         async with httpx.AsyncClient(timeout=180.0) as client:
+            catalog = await client.get(f"{self.base}/object_info")
+            catalog.raise_for_status()
+            errors = validate_prompt(prompt, catalog.json())
+            if errors:
+                raise RuntimeError('Workflow incompatível: ' + '; '.join(errors))
             r = await client.post(
                 f"{self.base}/prompt",
                 json={"prompt": prompt, "client_id": client_id},
             )
+            if r.is_error:
+                try:
+                    detail = r.json()
+                except ValueError:
+                    detail = r.text[:4000]
+                raise RuntimeError(f"ComfyUI rejeitou o workflow (HTTP {r.status_code}):\n{describe_rejection(detail, prompt)}")
             r.raise_for_status()
             data = r.json()
         if data.get("node_errors"):
-            raise RuntimeError(f"node_errors: {data['node_errors']}")
+            raise RuntimeError(describe_rejection(data, prompt))
         return data["prompt_id"]
 
     async def history(self, prompt_id: str) -> dict[str, Any] | None:
@@ -147,7 +160,15 @@ class ComfyClient:
 
     async def interrupt(self) -> None:
         async with httpx.AsyncClient(timeout=10.0) as client:
-            await client.post(f"{self.base}/interrupt")
+            response = await client.post(f"{self.base}/interrupt")
+            response.raise_for_status()
+
+    async def delete_prompts(self, prompt_ids: list[str]) -> None:
+        if not prompt_ids:
+            return
+        async with httpx.AsyncClient(timeout=10.0) as client:
+            response = await client.post(f"{self.base}/queue", json={"delete": prompt_ids})
+            response.raise_for_status()
 
     async def wait_prompt(
         self,
@@ -193,6 +214,8 @@ def start_comfyui() -> dict[str, Any]:
     port = str(db.get_setting("comfy_port") or "8188")
     args = [
         str(py),
+        "-X",
+        "utf8",
         str(main_py),
         "--listen",
         host,
@@ -205,11 +228,14 @@ def start_comfyui() -> dict[str, Any]:
     creationflags = 0
     if os.name == "nt":
         creationflags = subprocess.CREATE_NEW_PROCESS_GROUP | subprocess.DETACHED_PROCESS  # type: ignore[attr-defined]
-    subprocess.Popen(
-        args,
-        cwd=str(root),
-        stdout=subprocess.DEVNULL,
-        stderr=subprocess.DEVNULL,
-        creationflags=creationflags,
-    )
-    return {"ok": True, "message": "ComfyUI iniciando", "cmd": args}
+    log_path = DATA_DIR / "comfyui.log"
+    DATA_DIR.mkdir(parents=True, exist_ok=True)
+    with log_path.open("ab") as log:
+        subprocess.Popen(
+            args,
+            cwd=str(root),
+            stdout=log,
+            stderr=subprocess.STDOUT,
+            creationflags=creationflags,
+        )
+    return {"ok": True, "message": "ComfyUI iniciando", "cmd": args, "log": str(log_path)}

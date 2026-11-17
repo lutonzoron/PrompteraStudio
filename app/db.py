@@ -9,6 +9,7 @@ from pathlib import Path
 from typing import Any
 
 from .config import DB_PATH, PROJECTS_DIR, ensure_dirs
+from .categories import infer_category, default_footage_time
 
 _lock = threading.RLock()
 
@@ -112,9 +113,106 @@ def init_db() -> None:
 
                 CREATE INDEX IF NOT EXISTS idx_jobs_status ON jobs(status, priority, created_at);
                 CREATE INDEX IF NOT EXISTS idx_projects_status ON projects(status, queue_pos);
+                CREATE TABLE IF NOT EXISTS activity_logs (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    created_at REAL NOT NULL,
+                    level TEXT NOT NULL,
+                    source TEXT NOT NULL,
+                    project_id TEXT,
+                    message TEXT NOT NULL
+                );
+                CREATE INDEX IF NOT EXISTS idx_activity_project ON activity_logs(project_id, id);
+                CREATE TABLE IF NOT EXISTS footage_exports (
+                    id TEXT PRIMARY KEY,
+                    project_id TEXT NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+                    path TEXT NOT NULL,
+                    source_path TEXT NOT NULL,
+                    start_time TEXT NOT NULL,
+                    position TEXT NOT NULL,
+                    color TEXT NOT NULL,
+                    created_at REAL NOT NULL
+                );
                 """
             )
+            columns = {r['name'] for r in c.execute('PRAGMA table_info(projects)')}
+            for name, definition in [('category', "TEXT NOT NULL DEFAULT 'general'"),
+                                     ('cctv_timestamp_enabled', 'INTEGER NOT NULL DEFAULT 0'),
+                                     ('cctv_timestamp_start', 'TEXT')]:
+                if name not in columns:
+                    c.execute(f'ALTER TABLE projects ADD COLUMN {name} {definition}')
+            if not c.execute("SELECT 1 FROM settings WHERE key='migration_footage_v1'").fetchone():
+                for r in c.execute('SELECT id, slug FROM projects').fetchall():
+                    if infer_category(r['slug']) == 'footage':
+                        c.execute("UPDATE projects SET category='footage', cctv_timestamp_start=? WHERE id=?",
+                                  (default_footage_time(r['slug']), r['id']))
+                c.execute("INSERT INTO settings(key,value_json) VALUES('migration_footage_v1','true')")
+            if not c.execute("SELECT 1 FROM settings WHERE key='migration_footage_manual_v2'").fetchone():
+                c.execute("UPDATE projects SET cctv_timestamp_enabled=0 WHERE category='footage'")
+                c.execute("INSERT INTO settings(key,value_json) VALUES('migration_footage_manual_v2','true')")
             c.commit()
+        finally:
+            c.close()
+
+
+def save_footage_export(record: dict[str, Any]) -> None:
+    with _lock:
+        c = _conn()
+        try:
+            c.execute('INSERT INTO footage_exports VALUES(?,?,?,?,?,?,?,?)',
+                      tuple(record[k] for k in ('id', 'project_id', 'path', 'source_path', 'start_time', 'position', 'color', 'created_at')))
+            c.commit()
+        finally:
+            c.close()
+
+
+def footage_exports(project_id: str) -> list[dict[str, Any]]:
+    with _lock:
+        c = _conn()
+        try:
+            return [dict(r) for r in c.execute('SELECT * FROM footage_exports WHERE project_id=? ORDER BY created_at DESC', (project_id,))]
+        finally:
+            c.close()
+
+
+def add_log(message: str, *, level: str = "info", source: str = "studio",
+            project_id: str | None = None) -> None:
+    with _lock:
+        c = _conn()
+        try:
+            c.execute(
+                "INSERT INTO activity_logs(created_at, level, source, project_id, message) VALUES(?,?,?,?,?)",
+                (time.time(), level, source, project_id, message),
+            )
+            c.commit()
+        finally:
+            c.close()
+
+
+def list_logs(*, project_id: str | None = None, after: int = 0,
+              before: int | None = None, limit: int = 500) -> dict[str, Any]:
+    clauses = ["l.id > ?"]
+    params: list[Any] = [after]
+    if project_id is not None:
+        clauses.append("l.project_id = ?")
+        params.append(project_id)
+    if before is not None:
+        clauses.append("l.id < ?")
+        params.append(before)
+    limit = max(1, min(limit, 1000))
+    # Initial/history reads return the newest page; live reads advance without gaps.
+    order = "ASC" if after else "DESC"
+    with _lock:
+        c = _conn()
+        try:
+            rows = c.execute(
+                f"SELECT l.*, p.title AS project_title FROM activity_logs l LEFT JOIN projects p ON p.id=l.project_id "
+                f"WHERE {' AND '.join(clauses)} ORDER BY l.id {order} LIMIT ?",
+                [*params, limit + 1],
+            ).fetchall()
+            items = [dict(r) for r in rows[:limit]]
+            if not after:
+                items.reverse()
+            return {"items": items, "has_more": len(rows) > limit}
         finally:
             c.close()
 
@@ -348,6 +446,9 @@ def create_project(data: dict[str, Any]) -> dict[str, Any]:
     now = time.time()
     pid = str(uuid.uuid4())
     slug = data.get("slug") or _slugify(data.get("title") or "video")
+    category = data.get('category') or infer_category(slug)
+    if category not in {'general', 'footage'}:
+        raise ValueError('Categoria inválida')
     # ensure unique slug
     base = slug
     n = 1
@@ -361,8 +462,8 @@ def create_project(data: dict[str, Any]) -> dict[str, Any]:
                 """INSERT INTO projects(
                     id,slug,title,brief,status,review_mode,model_pack,style_id,
                     max_duration_sec,width,height,steps,synopsis,roteiro_md,takes_json,
-                    seed_base,stats_json,created_at,updated_at
-                ) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
+                    seed_base,stats_json,created_at,updated_at,category,cctv_timestamp_enabled,cctv_timestamp_start
+                ) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
                 (
                     pid,
                     slug,
@@ -383,6 +484,9 @@ def create_project(data: dict[str, Any]) -> dict[str, Any]:
                     json.dumps(data.get("stats") or {}, ensure_ascii=False),
                     now,
                     now,
+                    category,
+                    0,
+                    data.get('cctv_timestamp_start') or (default_footage_time(slug) if category == 'footage' else None),
                 ),
             )
             c.commit()
@@ -395,6 +499,7 @@ def update_project(project_id: str, **fields: Any) -> dict[str, Any] | None:
     if not fields:
         return get_project(project_id)
     allowed = {
+        'category', 'cctv_timestamp_enabled', 'cctv_timestamp_start',
         "title",
         "brief",
         "status",
@@ -511,6 +616,50 @@ def queued_projects() -> list[dict[str, Any]]:
             c.close()
 
 
+def set_queue_order(project_ids: list[str]) -> None:
+    """Keep the visible queue and the worker's dispatch priorities in the same order."""
+    with _lock:
+        c = _conn()
+        try:
+            for position, project_id in enumerate(dict.fromkeys(project_ids), 1):
+                c.execute('UPDATE projects SET queue_pos=? WHERE id=?', (position, project_id))
+                c.execute("UPDATE jobs SET priority=? WHERE project_id=? AND status IN ('queued','paused')",
+                          (position, project_id))
+            c.commit()
+        finally:
+            c.close()
+
+
+def reset_project_generation(project_id: str, takes: list[dict], seed_base: int,
+                             stats: dict, queue_pos: int) -> dict:
+    """Replace the completed run and queue its replacement in one transaction."""
+    job_id = str(uuid.uuid4())
+    now = time.time()
+    with _lock:
+        c = _conn()
+        try:
+            c.execute('BEGIN IMMEDIATE')
+            row = c.execute('SELECT status FROM projects WHERE id=?', (project_id,)).fetchone()
+            if not row or row['status'] not in {'done', 'failed'}:
+                raise ValueError('O vídeo não está concluído ou já foi enfileirado')
+            c.execute("UPDATE jobs SET status='cancelled', finished_at=?, message='Substituído pela regeração' "
+                      "WHERE project_id=? AND status IN ('queued','running','paused','awaiting_review')", (now, project_id))
+            c.execute('DELETE FROM runner_state WHERE project_id=?', (project_id,))
+            c.execute('DELETE FROM footage_exports WHERE project_id=?', (project_id,))
+            c.execute("UPDATE projects SET status='queued', takes_json=?, seed_base=?, stats_json=?, queue_pos=?, "
+                      "error=NULL, review_take=NULL, review_full_path=NULL, review_current_path=NULL, updated_at=? WHERE id=?",
+                      (json.dumps(takes, ensure_ascii=False), seed_base, json.dumps(stats), queue_pos, now, project_id))
+            c.execute("INSERT INTO jobs(id,project_id,kind,payload_json,status,priority,created_at) VALUES(?,?,'generate_video',?,'queued',100,?)",
+                      (job_id, project_id, json.dumps({'generation_id': stats['generation_id'], 'regenerate': True}), now))
+            c.commit()
+        except Exception:
+            c.rollback()
+            raise
+        finally:
+            c.close()
+    return get_job(job_id)
+
+
 # --- jobs ---
 
 def enqueue_job(
@@ -576,6 +725,15 @@ def update_job(job_id: str, **fields: Any) -> None:
         try:
             c.execute(f"UPDATE jobs SET {', '.join(cols)} WHERE id=?", vals)
             c.commit()
+        finally:
+            c.close()
+
+
+def get_job(job_id: str) -> dict[str, Any] | None:
+    with _lock:
+        c = _conn()
+        try:
+            return _row(c.execute("SELECT * FROM jobs WHERE id=?", (job_id,)).fetchone())
         finally:
             c.close()
 

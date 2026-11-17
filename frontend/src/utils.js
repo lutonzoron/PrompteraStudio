@@ -1,3 +1,11 @@
+export function formatElapsed(seconds) {
+  if (seconds == null || !Number.isFinite(Number(seconds))) return '—';
+  const total = Math.max(0, Math.round(Number(seconds)));
+  const hours = Math.floor(total / 3600);
+  const minutes = Math.floor((total % 3600) / 60);
+  return hours ? `${hours} h ${String(minutes).padStart(2, '0')} min` : `${minutes} min ${total % 60} s`;
+}
+
 export function statusLabel(s, t) {
   if (typeof t === "function") {
     const key = `status.${s}`;
@@ -82,4 +90,12 @@ export function posterSrc(p) {
   if (!p?.id) return null;
   if (isNsfw(p)) return null;
   return `/api/projects/${p.id}/poster`;
+}
+
+export function isProjectComplete(project) {
+  if (project?.status === "done") return true;
+  const takes = project?.takes || [];
+  const completed = new Set((project?.runner_state?.completed || project?.progress?.completed_ns || []).map(Number));
+  return takes.length > 0 && takes.every((take) => completed.has(Number(take.n))) &&
+    !!(project.has_master || project.master_url);
 }

@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from "react";
 import { api } from "../api.js";
 import { useT } from "../i18n/index.jsx";
+import VideoFormat, { VIDEO_FORMATS } from './VideoFormat.jsx';
 
 function DiceIcon() {
   return (
@@ -23,7 +24,7 @@ function DiceIcon() {
   );
 }
 
-export default function CreateSheet({ styles, busy, setBusy, setToast, onClose, onCreated }) {
+export default function CreateSheet({ styles, busy, setBusy, setToast, onClose, onCreated, footageAvailable = false }) {
   const t = useT();
   const [form, setForm] = useState({
     title: "",
@@ -32,6 +33,9 @@ export default function CreateSheet({ styles, busy, setBusy, setToast, onClose, 
     max_duration_sec: 60,
     review_mode: "automatico",
     model_pack: "sfw",
+    category: 'general',
+    width: VIDEO_FORMATS[0].width,
+    height: VIDEO_FORMATS[0].height,
   });
   const [estimate, setEstimate] = useState(null);
   const style = styles.find((s) => s.id === form.style_id);
@@ -126,6 +130,15 @@ export default function CreateSheet({ styles, busy, setBusy, setToast, onClose, 
             {style?.bible_hint_pt ? (
               <p className="create-style-hint">{style.bible_hint_pt}</p>
             ) : null}
+          </div>
+
+          <VideoFormat width={form.width} height={form.height} disabled={busy}
+            onChange={(dimensions) => setForm((prev) => ({ ...prev, ...dimensions }))} />
+          <div className="field">
+            <label>{t('category.label')}</label>
+            <select value={form.category} disabled={busy || !footageAvailable} onChange={(e) => setForm({ ...form, category: e.target.value })}>
+              <option value="general">{t('category.general')}</option><option value="footage">Footage</option>
+            </select>
           </div>
 
           <div className="chip-row">

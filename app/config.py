@@ -56,8 +56,9 @@ MODEL_PATHS = {
     "vae_a": ("vae", MODELS_SFW["vae_a"]),
 }
 
-# Optional HuggingFace resolve URLs for auto-download (NSFW packs are usually manual).
+# Default direct-download sources; settings can override these per model.
 MODEL_DOWNLOAD_URLS = {
+    "clip_nsfw": "https://huggingface.co/ethanfel/Qwen3-VL-32B-Ultra-Heretic-H3-ComfyUI-INT8-ConvRot/resolve/main/qwen3vl_32b_h3_ultra_uncensored_heretic_int8_convrot.safetensors",
     "unet_sfw": "https://huggingface.co/Comfy-Org/MiniMax-H3/resolve/main/diffusion_models/minimax_h3_fl2va_pruned_int8_convrot.safetensors",
     "clip_sfw": "https://huggingface.co/Comfy-Org/MiniMax-H3/resolve/main/text_encoders/qwen3vl_32b_minimax_h3_nvfp4_awq.safetensors",
     "vae_v": "https://huggingface.co/Comfy-Org/MiniMax-H3/resolve/main/vae/minimax_h3_video_vae_fp16.safetensors",

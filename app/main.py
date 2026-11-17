@@ -1,16 +1,19 @@
 from __future__ import annotations
 
 import asyncio
+import logging
+from datetime import datetime
 from pathlib import Path
-from typing import Any
+from typing import Any, Literal
 
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, Query
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 
 from . import db
+from .activity import ActivityLogHandler, ActivityMiddleware, watch_comfy_log
 from .comfy.client import start_comfyui
 from .config import DELIVERABLES_DIR, FRONTEND_DIST, PROJECTS_DIR, ensure_dirs
 from .cost import (
@@ -34,6 +37,9 @@ from .onboarding.setup import (
     onboarding_status,
 )
 from .queue.worker import (
+    cancel_generation,
+    prioritize_generation,
+    regenerate_generation,
     enqueue_generation,
     pause_worker,
     resume_worker,
@@ -52,10 +58,11 @@ from .inbox.service import (
     import_takes_file,
 )
 from .posters import ensure_poster
-from .masters import build_master, project_master_info, resolve_master_path
+from .masters import build_master, build_preview, project_master_info, project_preview_info, resolve_master_path
 from .external_sync import external_sync_loop, peek_comfy_queue, sync_all_external
 
 app = FastAPI(title="Promptera Studio", version="0.1.0")
+app.add_middleware(ActivityMiddleware)
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
@@ -96,15 +103,31 @@ async def _startup() -> None:
     ensure_dirs()
     ensure_inbox()
     db.init_db()
+    handler = ActivityLogHandler(level=logging.WARNING)
+    logging.getLogger().addHandler(handler)
+    app.state.activity_handler = handler
+    db.add_log("Promptera Studio iniciado", source="system")
+    app.state.comfy_log_task = asyncio.create_task(watch_comfy_log(), name="comfy-log")
     ensure_seed_styles()
     await start_worker()
     asyncio.create_task(_inbox_watcher(), name="inbox-watcher")
     asyncio.create_task(external_sync_loop(15.0), name="external-sync")
 
 
+@app.on_event("shutdown")
+async def _shutdown() -> None:
+    app.state.comfy_log_task.cancel()
+    db.add_log("Promptera Studio encerrando", source="system")
+    logging.getLogger().removeHandler(app.state.activity_handler)
+
+
+@app.get("/api/logs")
+def api_logs(project_id: str | None = None, after: int = Query(0, ge=0),
+             before: int | None = Query(None, ge=1), limit: int = Query(500, ge=1, le=1000)) -> dict[str, Any]:
+    return db.list_logs(project_id=project_id, after=after, before=before, limit=limit)
+
+
 # ---------- models ----------
-
-
 class LLMConfigBody(BaseModel):
     provider: str = "openai"
     api_key: str | None = None
@@ -135,6 +158,9 @@ class StyleUpdateBody(BaseModel):
 
 
 class ProjectCreateBody(BaseModel):
+    category: Literal['general', 'footage'] | None = None
+    cctv_timestamp_enabled: bool = False
+    cctv_timestamp_start: datetime | None = None
     title: str = "Nova história"
     brief: str = ""
     style_id: str | None = None
@@ -148,6 +174,9 @@ class ProjectCreateBody(BaseModel):
 
 
 class ProjectUpdateBody(BaseModel):
+    category: Literal['general', 'footage'] | None = None
+    cctv_timestamp_enabled: bool | None = None
+    cctv_timestamp_start: datetime | None = None
     title: str | None = None
     brief: str | None = None
     style_id: str | None = None
@@ -177,6 +206,16 @@ class ReorderBody(BaseModel):
     project_ids: list[str]
 
 
+class FootageExportBody(BaseModel):
+    start_time: datetime | None = None
+    position: Literal['top-left', 'top-right', 'bottom-left', 'bottom-right'] = 'top-left'
+    color: Literal['white', 'green'] = 'white'
+
+
+class RegenerateBody(BaseModel):
+    confirmed: Literal[True]
+
+
 # ---------- health / onboarding ----------
 
 
@@ -186,6 +225,7 @@ async def health() -> dict[str, Any]:
     return {
         "ok": True,
         "onboarding": onboarding_status(),
+        "features": {"prioritize": True, "footage": True, "regenerate": True},
         "comfy": comfy,
         "machine": load_or_detect_profile(),
         "pending_reviews": len(db.projects_awaiting_review()),
@@ -271,8 +311,12 @@ def api_workflows() -> dict[str, Any]:
 
 
 @app.get("/api/comfy/deps")
-def api_comfy_deps() -> dict[str, Any]:
-    return dependency_report()
+async def api_comfy_deps() -> dict[str, Any]:
+    from .comfy.validation import check_runtime
+    report = dependency_report()
+    report['runtime'] = await check_runtime()
+    report['runtime_nsfw'] = await check_runtime({'model_pack': 'nsfw'})
+    return report
 
 
 @app.post("/api/comfy/ensure")
@@ -287,6 +331,25 @@ def api_download_model(key: str) -> dict[str, Any]:
     if not result.get("ok"):
         raise HTTPException(400, result.get("error") or "Falha no download")
     return result
+
+
+@app.put('/api/comfy/models/{key}/source')
+def api_model_source(key: str, body: dict[str, str]) -> dict[str, Any]:
+    from .onboarding.setup import set_model_download_url
+    try:
+        set_model_download_url(key, body.get('url', '').strip())
+    except ValueError as exc:
+        raise HTTPException(400, str(exc)) from exc
+    return {'ok': True}
+
+
+@app.post('/api/comfy/model-packs/{pack}/download')
+def api_download_pack(pack: str) -> dict[str, Any]:
+    from .onboarding.setup import download_model_pack
+    try:
+        return download_model_pack(pack)
+    except ValueError as exc:
+        raise HTTPException(400, str(exc)) from exc
 
 
 @app.put("/api/settings/comfyui_root")
@@ -375,32 +438,10 @@ async def api_queue() -> dict[str, Any]:
     active_project_id: str | None = None
     if live_slug and live_slug in by_slug:
         active_project_id = str(by_slug[live_slug]["id"])
-    elif live_slug:
-        # fuzzy: slug contained / contains
-        for p in items:
-            slug = str(p.get("slug") or "")
-            if slug and (slug in live_slug or live_slug in slug):
-                active_project_id = str(p["id"])
-                break
     if active_project_id is None and active_job and active_job.get("project_id"):
         # Only trust internal job if Comfy isn't clearly busy on someone else
         if not live_slug:
             active_project_id = str(active_job["project_id"])
-    if active_project_id is None:
-        externals = []
-        for p in items:
-            stats = p.get("stats") or {}
-            state = db.get_runner_state(p["id"])
-            external = bool(stats.get("external_runner") or state.get("external"))
-            if not external or stats.get("waiting_for"):
-                continue
-            if p.get("status") not in {"generating", "queued"}:
-                continue
-            externals.append(p)
-        externals.sort(key=lambda x: int(x.get("queue_pos") or 9999))
-        if externals:
-            active_project_id = str(externals[0]["id"])
-
     now: dict[str, Any] | None = None
     external_active = None
 
@@ -520,7 +561,7 @@ async def api_external_sync() -> dict[str, Any]:
 
 @app.post("/api/projects")
 def api_create_project(body: ProjectCreateBody) -> dict[str, Any]:
-    return db.create_project(body.model_dump())
+    return db.create_project(body.model_dump(mode='json'))
 
 
 @app.get("/api/projects/{project_id}")
@@ -542,6 +583,9 @@ async def api_get_project(project_id: str) -> dict[str, Any]:
     poster = ensure_poster(project_id)
     p["poster_url"] = f"/api/projects/{project_id}/poster" if poster else None
     p.update(project_master_info(project_id))
+    p.update(project_preview_info(p))
+    p['footage_exports'] = [dict(row, url=f"/api/projects/{project_id}/footage-exports/{row['id']}")
+                            for row in db.footage_exports(project_id)]
     return p
 
 
@@ -576,7 +620,8 @@ def api_project_master(project_id: str):
     p = db.get_project(project_id)
     if not p:
         raise HTTPException(404)
-    path = resolve_master_path(p)
+    info = project_master_info(project_id)
+    path = Path(info['master_path']) if info['has_master'] else None
     if not path:
         raise HTTPException(404, "Vídeo final ainda não disponível")
     return FileResponse(
@@ -587,12 +632,59 @@ def api_project_master(project_id: str):
     )
 
 
+@app.get("/api/projects/{project_id}/preview")
+def api_project_preview(project_id: str, v: str | None = None):
+    if not db.get_project(project_id):
+        raise HTTPException(404, "Projeto não encontrado")
+    try:
+        path = build_preview(project_id, v)
+    except RuntimeError as exc:
+        raise HTTPException(409, str(exc)) from exc
+    return FileResponse(path, media_type="video/mp4",
+                        headers={"Accept-Ranges": "bytes", "Cache-Control": "no-cache"})
+
+
 @app.patch("/api/projects/{project_id}")
 def api_patch_project(project_id: str, body: ProjectUpdateBody) -> dict[str, Any]:
-    p = db.update_project(project_id, **body.model_dump(exclude_none=True))
+    current = db.get_project(project_id)
+    if not current:
+        raise HTTPException(404)
+    dimensions_changed = any(value is not None and value != current.get(key)
+                             for key, value in (('width', body.width), ('height', body.height)))
+    if dimensions_changed:
+        state = db.get_runner_state(project_id)
+        if current.get('status') in ('queued', 'generating', 'paused', 'awaiting_review', 'done') or state.get('completed') or state.get('last_ok'):
+            raise HTTPException(409, 'Escolha o formato antes de enfileirar ou renderizar os takes. Crie outro projeto para usar um novo formato.')
+    fields = body.model_dump(exclude_none=True, mode='json')
+    if fields.get('category') == 'footage' and not current.get('cctv_timestamp_start') and not fields.get('cctv_timestamp_start'):
+        from .categories import default_footage_time
+        fields['cctv_timestamp_start'] = default_footage_time(current['slug'])
+    p = db.update_project(project_id, **fields)
     if not p:
         raise HTTPException(404)
     return p
+
+
+@app.post('/api/projects/{project_id}/footage-export')
+def api_footage_export(project_id: str, body: FootageExportBody) -> dict[str, Any]:
+    from .footage import export_timestamp
+    if not db.get_project(project_id):
+        raise HTTPException(404, 'Projeto não encontrado')
+    if not project_master_info(project_id)['has_master']:
+        raise HTTPException(409, 'Aguarde a conclusão do master para aplicar data/hora')
+    try:
+        return export_timestamp(project_id, body.start_time, body.position, body.color)
+    except (RuntimeError, ValueError) as exc:
+        raise HTTPException(400, str(exc)) from exc
+
+
+@app.get('/api/projects/{project_id}/footage-exports/{export_id}')
+def api_footage_export_file(project_id: str, export_id: str):
+    row = next((r for r in db.footage_exports(project_id) if r['id'] == export_id), None)
+    if not row or not Path(row['path']).is_file():
+        raise HTTPException(404, 'Exportação não encontrada')
+    return FileResponse(row['path'], media_type='video/mp4', filename=f'footage_{export_id}.mp4',
+                        headers={'Cache-Control': 'no-cache', 'Accept-Ranges': 'bytes'})
 
 
 @app.delete("/api/projects/{project_id}")
@@ -672,7 +764,7 @@ async def api_enqueue(project_id: str) -> dict[str, Any]:
 
 
 @app.post("/api/projects/{project_id}/dequeue")
-def api_dequeue(project_id: str) -> dict[str, Any]:
+async def api_dequeue(project_id: str) -> dict[str, Any]:
     """Remove project from render queue without archiving."""
     project = db.get_project(project_id)
     if not project:
@@ -680,6 +772,7 @@ def api_dequeue(project_id: str) -> dict[str, Any]:
     from .external_sync import cancel_jobs_for_project
 
     cancel_jobs_for_project(project_id, message="Removido da fila")
+    await cancel_generation(project_id)
     updated = db.update_project(
         project_id,
         status="draft" if project.get("status") != "done" else "done",
@@ -687,6 +780,27 @@ def api_dequeue(project_id: str) -> dict[str, Any]:
         error=None,
     )
     return {"ok": True, "project": updated}
+
+
+@app.post('/api/projects/{project_id}/regenerate')
+async def api_regenerate(project_id: str, body: RegenerateBody) -> dict[str, Any]:
+    if not db.get_project(project_id):
+        raise HTTPException(404, 'Projeto não encontrado')
+    try:
+        job = await regenerate_generation(project_id)
+    except (RuntimeError, ValueError) as exc:
+        raise HTTPException(409, str(exc)) from exc
+    return {'ok': True, 'job': job, 'project': db.get_project(project_id)}
+
+
+@app.post("/api/projects/{project_id}/prioritize")
+async def api_prioritize(project_id: str) -> dict[str, Any]:
+    if not db.get_project(project_id):
+        raise HTTPException(404, 'Projeto não encontrado')
+    try:
+        return await prioritize_generation(project_id)
+    except RuntimeError as exc:
+        raise HTTPException(409, str(exc)) from exc
 
 
 @app.post("/api/comfy/interrupt")
@@ -702,8 +816,7 @@ async def api_comfy_interrupt() -> dict[str, Any]:
 
 @app.post("/api/queue/reorder")
 def api_reorder(body: ReorderBody) -> dict[str, Any]:
-    for i, pid in enumerate(body.project_ids, start=1):
-        db.update_project(pid, queue_pos=i)
+    db.set_queue_order(body.project_ids)
     return {"ok": True, "items": db.queued_projects()}
 
 
@@ -722,8 +835,9 @@ def api_pause() -> dict[str, Any]:
 
 
 @app.post("/api/worker/resume")
-def api_resume() -> dict[str, Any]:
+async def api_resume() -> dict[str, Any]:
     resume_worker()
+    await start_worker()
     return {"ok": True, "paused": False}
 
 

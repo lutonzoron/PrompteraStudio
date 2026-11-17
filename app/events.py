@@ -4,6 +4,8 @@ import asyncio
 import json
 from typing import Any
 
+from .activity import log_event
+
 _listeners: list[asyncio.Queue] = []
 _lock = asyncio.Lock()
 
@@ -22,6 +24,7 @@ async def unsubscribe(q: asyncio.Queue) -> None:
 
 
 async def broadcast(event: dict[str, Any]) -> None:
+    log_event(event)
     payload = dict(event)
     async with _lock:
         dead: list[asyncio.Queue] = []

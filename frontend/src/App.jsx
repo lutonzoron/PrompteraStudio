@@ -10,6 +10,8 @@ import ReviewModal from "./components/ReviewModal.jsx";
 import Settings from "./components/Settings.jsx";
 import StyleGallery from "./components/StyleGallery.jsx";
 import InboxSheet from "./components/InboxSheet.jsx";
+import LogsPanel from "./components/LogsPanel.jsx";
+import ActionFeedback from "./components/ActionFeedback.jsx";
 import { ConfirmProvider } from "./components/ConfirmDialog.jsx";
 import { useT } from "./i18n/index.jsx";
 
@@ -32,7 +34,7 @@ export default function App() {
   const [error, setError] = useState(null);
   const [showArchived, setShowArchived] = useState(false);
   const [sheet, setSheet] = useState(null); // create | settings | inbox
-  const [page, setPage] = useState("studio"); // studio | styles
+  const [page, setPage] = useState(() => window.location.hash === "#/logs" ? "logs" : "studio");
   const [inbox, setInbox] = useState(null);
   const esRef = useRef(null);
 
@@ -108,6 +110,7 @@ export default function App() {
     const onHash = () => {
       const id = readHashProjectId();
       setSelectedId(id);
+      setPage(window.location.hash === "#/logs" ? "logs" : "studio");
     };
     window.addEventListener("hashchange", onHash);
     return () => window.removeEventListener("hashchange", onHash);
@@ -146,6 +149,7 @@ export default function App() {
             "job_progress",
             "job_queued",
             "job_started",
+            "job_preempted",
             "inbox_imported",
             "external_sync",
             "project_updated",
@@ -172,7 +176,7 @@ export default function App() {
             api.inbox().then(setInbox).catch(() => {});
           }
           if (
-            (data.type === "external_sync" || data.type === "project_updated") &&
+            ["external_sync", "project_updated", "job_progress", "job_started", "job_failed", "job_preempted"].includes(data.type) &&
             data.project_id &&
             selectedId === data.project_id
           ) {
@@ -213,11 +217,16 @@ export default function App() {
       <Shell
         health={health}
         pendingReviews={pendingReviews}
-        activeNav={page === "styles" ? "styles" : "studio"}
+        activeNav={page}
         onHome={goHome}
         onCreate={() => setSheet("create")}
         onOpenSettings={() => setSheet("settings")}
         onOpenStyles={openStyles}
+        onOpenLogs={() => {
+          goHome();
+          setPage("logs");
+          window.location.hash = "#/logs";
+        }}
         onOpenInbox={() => setSheet("inbox")}
         onComfyStart={() => api.comfyStart().then(refresh)}
         inboxPending={inbox?.pending_count || inbox?.pending?.length || 0}
@@ -236,7 +245,7 @@ export default function App() {
           </div>
         ) : null}
 
-        {page === "styles" ? (
+        {page === "logs" ? <LogsPanel /> : page === "styles" ? (
           <StyleGallery
             styles={styles}
             busy={busy}
@@ -246,6 +255,7 @@ export default function App() {
           />
         ) : project && selectedId ? (
           <ProjectPage
+            footageAvailable={!!health?.features?.footage}
             project={project}
             setProject={setProject}
             busy={busy}
@@ -256,6 +266,7 @@ export default function App() {
           />
         ) : (
           <Library
+            regenerateAvailable={!!health?.features?.regenerate}
             projects={projects}
             selectedId={null}
             showArchived={showArchived}
@@ -269,6 +280,7 @@ export default function App() {
       </Shell>
 
       <QueueDock
+        prioritizeAvailable={!!health?.features?.prioritize}
         queue={queue}
         onOpenReview={setReview}
         onRefresh={refresh}
@@ -278,6 +290,7 @@ export default function App() {
 
       {sheet === "create" ? (
         <CreateSheet
+          footageAvailable={!!health?.features?.footage}
           styles={styles}
           busy={busy}
           setBusy={setBusy}
@@ -329,6 +342,7 @@ export default function App() {
       ) : null}
 
       {toast ? <div className="toast">{toast}</div> : null}
+      <ActionFeedback />
     </ConfirmProvider>
   );
 }

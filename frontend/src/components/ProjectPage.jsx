@@ -1,14 +1,19 @@
 import React, { useEffect, useMemo, useState } from "react";
 import { api } from "../api.js";
 import { useConfirm } from "./ConfirmDialog.jsx";
-import { cleanTitle, fmtDate, isNsfw, posterSrc, statusLabel } from "../utils.js";
+import { cleanTitle, fmtDate, formatElapsed, isNsfw, isProjectComplete, posterSrc, statusLabel } from "../utils.js";
 import { useLocale, useT } from "../i18n/index.jsx";
+import VideoFormat from './VideoFormat.jsx';
+import LogsPanel from './LogsPanel.jsx';
+import FootagePanel from './FootagePanel.jsx';
+import { runProjectAction, useProjectActions } from '../projectActions.js';
 
 function reviewLabel(mode, t) {
   return mode === "com_revisao" ? t("project.modeReviewLong") : t("project.reviewModeShort");
 }
 
 export default function ProjectPage({
+  footageAvailable = false,
   project,
   setProject,
   busy,
@@ -20,11 +25,16 @@ export default function ProjectPage({
   const t = useT();
   const { dateLocale } = useLocale();
   const confirm = useConfirm();
+  const pendingActions = useProjectActions();
   const [estimate, setEstimate] = useState(project?.estimate || null);
   const [masterOk, setMasterOk] = useState(!!project?.has_master || !!project?.master_url);
   const [focusTake, setFocusTake] = useState(null);
   const [editingTitle, setEditingTitle] = useState(false);
   const [titleDraft, setTitleDraft] = useState("");
+
+  useEffect(() => {
+    setMasterOk(!!project?.has_master);
+  }, [project?.has_master, project?.master_url]);
 
   useEffect(() => {
     setEstimate(project?.estimate || null);
@@ -54,12 +64,14 @@ export default function ProjectPage({
 
   if (!project) return null;
 
-  const masterUrl = `/api/projects/${project.id}/master`;
+  const masterUrl = project.master_url || `/api/projects/${project.id}/master`;
+  const playbackUrl = masterOk ? masterUrl : project.preview_url;
   const remaining = Math.max(0, takes.length - done.size);
   const pct = takes.length ? Math.round((done.size / takes.length) * 100) : 0;
-  const isDone =
-    project.status === "done" || (takes.length > 0 && remaining === 0 && masterOk);
+  const isDone = isProjectComplete({ ...project, has_master: masterOk });
   const nsfw = isNsfw(project);
+  const history = project.stats || {};
+  const showHistory = isDone || (history.videos_sec != null && !['generating', 'queued', 'paused', 'awaiting_review'].includes(project.status));
   const synopsis = project.synopsis || project.brief || "";
   const currentTake =
     project.runner_state?.current_take ||
@@ -68,16 +80,19 @@ export default function ProjectPage({
   const isGenerating = ["generating", "queued", "paused"].includes(project.status);
 
   async function enqueue() {
-    setBusy(true);
-    try {
-      await api.enqueue(project.id);
-      setToast(t("project.queuedToast"));
-      onRefresh();
-    } catch (e) {
-      setToast(String(e.message || e));
-    } finally {
-      setBusy(false);
-    }
+    if (isDone || isGenerating || project.status === "awaiting_review") return;
+    return runProjectAction(project.id, t("actions.pending", { action: t("project.enqueue"), title: cleanTitle(project.title) }), async () => {
+      setBusy(true);
+      try {
+        await api.enqueue(project.id);
+        setToast(t("project.queuedToast"));
+        await onRefresh();
+      } catch (e) {
+        setToast(String(e.message || e));
+      } finally {
+        setBusy(false);
+      }
+    });
   }
 
   async function regen() {
@@ -161,15 +176,15 @@ export default function ProjectPage({
       </nav>
 
       <div className="pp-stage">
-        {masterOk ? (
+        {playbackUrl ? (
           <video
             className="pp-video"
-            key={masterUrl}
-            src={masterUrl}
+            key={playbackUrl}
+            src={playbackUrl}
             controls
             playsInline
             poster={nsfw ? undefined : posterSrc(project) || undefined}
-            onError={() => setMasterOk(false)}
+            onError={() => { if (masterOk) setMasterOk(false); }}
           />
         ) : (
           <div className={`pp-empty ${nsfw ? "nsfw-cover" : ""}`}>
@@ -181,13 +196,15 @@ export default function ProjectPage({
             <p>{t("project.masterNotReady")}</p>
             <p className="muted">{t("project.masterNotReadyHint")}</p>
             <div className="row" style={{ justifyContent: "center", marginTop: 8 }}>
-              <button type="button" className="primary" disabled={busy} onClick={buildMasterClick}>
+              <button type="button" className="primary" disabled={busy || remaining > 0} onClick={buildMasterClick}>
                 {t("project.buildMaster")}
               </button>
             </div>
           </div>
         )}
       </div>
+
+      {!masterOk && project.has_preview && <p className="muted">{t("project.partialPreview", { done: done.size, total: takes.length })}</p>}
 
       <header className="pp-head">
         <div className="pp-head-text">
@@ -270,6 +287,10 @@ export default function ProjectPage({
           </div>
         </div>
         <div className="pp-head-actions">
+          {project.category === 'footage' && <button type="button" aria-controls="footage-controls"
+            onClick={() => document.getElementById('footage-controls')?.scrollIntoView({ behavior: 'smooth', block: 'start' })}>
+            {t('footage.apply')}
+          </button>}
           {masterOk ? (
             <a
               className="btn-link"
@@ -279,18 +300,18 @@ export default function ProjectPage({
               {t("project.downloadMaster")}
             </a>
           ) : (
-            <button type="button" disabled={busy} onClick={buildMasterClick}>
+            <button type="button" disabled={busy || remaining > 0} onClick={buildMasterClick}>
               {t("project.buildMaster")}
             </button>
           )}
-          <button
+          {!isDone && <button
             type="button"
             className="primary pp-cta"
-            disabled={busy || !takes.length || project.status === "archived"}
+            disabled={busy || pendingActions.has(project.id) || isGenerating || project.status === "awaiting_review" || !takes.length || project.status === "archived"}
             onClick={enqueue}
           >
-            {isDone ? t("project.regenerate") : t("project.enqueue")}
-          </button>
+            {t("project.enqueue")}
+          </button>}
         </div>
       </header>
 
@@ -303,16 +324,16 @@ export default function ProjectPage({
           </div>
         </div>
         <div className="pp-stat">
-          <span className="pp-stat-label">{t("project.timeRemaining")}</span>
-          <strong>{estimate ? `~${estimate.total_min} min` : "—"}</strong>
+          <span className="pp-stat-label">{showHistory ? t('history.elapsed') : t("project.timeRemaining")}</span>
+          <strong>{showHistory ? formatElapsed(history.videos_sec) : estimate ? `~${estimate.total_min} min` : "—"}</strong>
           <span className="muted">
-            {estimate?.finish_at
+            {showHistory ? (history.initial_estimate ? t('history.initialTime', { time: formatElapsed(history.initial_estimate.total_sec) }) : t(history.videos_sec != null ? 'history.recorded' : 'history.unavailable')) : estimate?.finish_at
               ? t("project.finishesAt", { at: estimate.finish_at })
               : remaining
                 ? t("project.takesRemaining", { n: remaining })
                 : t("project.complete")}
           </span>
-          {estimate?.current_take && remaining ? (
+          {!showHistory && estimate?.current_take && remaining ? (
             <span className="muted">
               take {estimate.current_take} ≈ {estimate.current_take_min} min
               {typeof estimate.current_take_pct === "number" && estimate.current_take_pct > 0
@@ -322,9 +343,10 @@ export default function ProjectPage({
           ) : null}
         </div>
         <div className="pp-stat">
-          <span className="pp-stat-label">{t("project.estCost")}</span>
-          <strong>{estimate ? `R$ ${estimate.cost_brl}` : "—"}</strong>
-          <span className="muted">{estimate?.source || t("project.energyH3")}</span>
+          <span className="pp-stat-label">{showHistory ? t('history.cost') : t("project.estCost")}</span>
+          <strong>{showHistory ? (history.cost_brl != null ? `R$ ${Number(history.cost_brl).toFixed(2)}` : '—') : estimate ? `R$ ${estimate.cost_brl}` : "—"}</strong>
+          <span className="muted">{showHistory ? (history.cost_brl != null ? t('history.energy', { kwh: history.energy_kwh ?? '—' }) : t('history.unavailable')) : estimate?.source || t("project.energyH3")}</span>
+          {showHistory && history.initial_estimate && <span className="muted">{t('history.initialCost', { cost: Number(history.initial_estimate.cost_brl).toFixed(2) })}</span>}
         </div>
         <div className="pp-stat">
           <span className="pp-stat-label">{t("project.reviewModeLabel")}</span>
@@ -369,6 +391,34 @@ export default function ProjectPage({
                 <dd>{statusLabel(project.status, t)}</dd>
               </div>
             </dl>
+            <div className="field">
+              <label htmlFor="project-category">{t('category.label')}</label>
+              <select id="project-category" value={project.category || 'general'} disabled={busy || !footageAvailable}
+                onChange={async (e) => {
+                  try {
+                    const updated = await api.patchProject(project.id, { category: e.target.value });
+                    setProject({ ...project, ...updated });
+                    await onRefresh();
+                  } catch (e) { setToast(String(e.message || e)); }
+                }}>
+                <option value="general">{t('category.general')}</option><option value="footage">Footage</option>
+              </select>
+            </div>
+            <VideoFormat width={project.width} height={project.height} disabled={busy}
+              locked={isGenerating || ['awaiting_review', 'done'].includes(project.status) || done.size > 0 || masterOk || !!project.runner_state?.last_ok}
+              onChange={async (dimensions) => {
+                setBusy(true);
+                try {
+                  const updated = await api.patchProject(project.id, dimensions);
+                  setProject({ ...project, ...updated });
+                  setToast(t('videoFormat.saved'));
+                  onRefresh();
+                } catch (e) {
+                  setToast(String(e.message || e));
+                } finally {
+                  setBusy(false);
+                }
+              }} />
             {isDone ? <div className="alert good">{t("project.flowDone")}</div> : null}
             <div className="pp-side-actions">
               <button type="button" disabled={busy} onClick={regen}>
@@ -507,6 +557,9 @@ export default function ProjectPage({
           )}
         </section>
       </div>
+      {project.category === 'footage' && <FootagePanel key={`footage-${project.id}`} project={project}
+        onProject={setProject} onRefresh={onRefresh} setToast={setToast} available={footageAvailable} />}
+      <LogsPanel key={project.id} projectId={project.id} />
     </div>
   );
 }

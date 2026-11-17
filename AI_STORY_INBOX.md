@@ -12,12 +12,30 @@ These Continuity / prompt rules match the **MiniMax H3 + DaSiWa Continuity** ski
 
 ## 1. Drop folder (required layout)
 
+### Confirm video dimensions before authoring (mandatory)
+
+Before writing any Inbox Markdown/script, `takes.json`, or pack, ask the user to
+**confirm the video format and pixel dimensions**, then **wait for an explicit answer**.
+Do not silently use the app default or infer the format from the story topic.
+An explicit format/dimension choice already supplied by the user for this pack counts
+as confirmation; do not ask again. If custom dimensions are ambiguous, clarify them.
+
+Suggested question: **“Qual formato você confirma para este vídeo: celular vertical
+9:16 (576×1024), horizontal 16:9 (1024×576), quadrado 1:1 (768×768), ou retrato
+para feed 4:5 (768×960)?”**
+
+After confirmation, include `meta.json` with numeric `width` and `height`, and record
+the confirmed format and resolution in the `roteiro.md`/`story.md` header. Compose
+all takes for that framing and use the same dimensions throughout the project.
+This requirement applies to new agent-authored packs; legacy packs without dimensions
+remain importable using the application's defaults.
+
 Create **one folder per story**:
 
 ```text
 data/inbox/<slug>/
   takes.json     # REQUIRED — Continuity take list
-  meta.json      # optional but recommended
+  meta.json      # REQUIRED for new agent-authored packs (confirmed width/height)
   roteiro.md     # optional — human-readable script (Markdown)
 ```
 
@@ -35,7 +53,7 @@ Examples: `milkshake_htf`, `vila_lele_01`, `shorts_mystery_30s`
 
 ---
 
-## 2. `meta.json` (optional)
+## 2. `meta.json` (required for new agent-authored packs)
 
 ```json
 {
@@ -46,6 +64,8 @@ Examples: `milkshake_htf`, `vila_lele_01`, `shorts_mystery_30s`
   "model_pack": "sfw",
   "review_mode": "automatico",
   "max_duration_sec": 60,
+  "width": 576,
+  "height": 1024,
   "seed_base": 2000,
   "enqueue": false,
   "style_id": null
@@ -60,6 +80,28 @@ Examples: `milkshake_htf`, `vila_lele_01`, `shorts_mystery_30s`
 | `enqueue` | bool | Reserved; usually leave `false` (user enqueues in UI) |
 
 `title` / `brief` / `synopsis` may be Portuguese (human-facing). Everything inside each take `prompt` follows §5 Language.
+
+`width` and `height` are the confirmed pixel dimensions. `meta.json` is required for
+new agent-authored packs to carry this choice. Example dimensions are illustrative;
+never copy them without user confirmation.
+
+### Footage category and CCTV clock
+
+Optional metadata fields supported by the importer:
+
+- `category`: `"general"` or `"footage"`. Footage includes Strange Footages and surveillance stories.
+- `cctv_timestamp_enabled`: legacy field; use `false`. Never apply timestamps automatically.
+- `cctv_timestamp_start`: ISO local display time, for example `"2026-11-12T19:08:12"`.
+
+For every new Footage pack, choose a **fictional** start date/time consistent with the scene's
+lighting, write it explicitly in the Markdown header and store the same value in metadata.
+The timestamp is added **only when the user clicks the manual post-production button**;
+the generated source may already contain a clock despite negative prompts. Inspect it first
+to avoid duplicate clocks. Render our clock at low resolution and blend a softened, pixelated
+overlay so it matches inexpensive surveillance footage rather than sharp modern subtitles.
+The clock advances during playback and rolls over correctly at midnight. Do not describe
+the chosen timestamp as evidence that the scene actually occurred. The original master is
+preserved; a manually requested timestamped export becomes the displayed version.
 
 ---
 
@@ -146,6 +188,7 @@ Suggested structure:
 
 **Slug:** my_story_slug  
 **Pack:** sfw  
+**Formato confirmado:** celular vertical 9:16, 576×1024 px
 **Target length:** ~30s (6×5s)
 
 ## Logline
@@ -193,7 +236,7 @@ These rules matter more than fancy prose. **Match the skill exactly.**
 3. **Spatial anchors** — LEFT / RIGHT / CENTER / front / back so characters don’t drift  
 4. **Match duration** — if `duration: 5`, don’t describe 20 seconds of plot; timestamps must match  
 5. **Audio** — say speech vs SFX-only vs silence; avoid unwanted dialogue tags if mute  
-6. **Defaults:** ~544×992 (or project size), 24 fps, euler, 8 steps, overlap **22**, `output_mode: full`
+6. **Dimensions:** use the user's confirmed `width`/`height`, never an assumed default. Other defaults: 24 fps, euler, 8 steps, overlap **22**, `output_mode: full`
 
 ### 5.3 Character identity (anti sheet-leak)
 
@@ -265,13 +308,15 @@ Continuity **Full** means each take file already contains 1…N. The app master 
 
 ```text
 [ ] Ask user: SFW or NSFW? auto review or take-by-take?
+[ ] Ask and wait for explicit video format/dimension confirmation before writing the script or pack (unless already explicitly supplied for this pack)
+[ ] Save confirmed width/height in meta.json and format/resolution in the Markdown header
 [ ] Pick slug + title + max duration
 [ ] Plan sessions (NEW/CONTINUE), ≤3–4 takes each
 [ ] Write takes.json with n, kind, session, seed, duration, prefix, prompt
 [ ] Prompts in ENGLISH; dialogue only as <d>[Portuguese] …</d> (sparse)
 [ ] Spatial map + CONTINUITY LOCK on every take; 1 action per take
 [ ] Timestamps match duration; no Portuguese action lines in prompts
-[ ] Optional meta.json + roteiro.md (roteiro may be PT)
+[ ] Required meta.json with confirmed dimensions; optional roteiro.md (roteiro may be PT)
 [ ] Write pack under data/inbox/<slug>/
 [ ] Tell user: open Promptera → Inbox → Aprovar → enqueue when ready
 ```
@@ -300,7 +345,9 @@ UI: Inbox badge shows pending count; per-pack **Aprovar** / **Rejeitar**.
   "brief": "Character waves once at camera",
   "model_pack": "sfw",
   "review_mode": "automatico",
-  "max_duration_sec": 15
+  "max_duration_sec": 15,
+  "width": 576,
+  "height": 1024
 }
 ```
 

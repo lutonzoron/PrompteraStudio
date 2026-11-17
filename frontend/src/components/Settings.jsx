@@ -7,7 +7,7 @@ const STEP_TAB = {
   hardware: "system",
   comfyui: "comfy",
   dasiwa: "comfy",
-  models_sfw: "system",
+  models_sfw: "comfy",
   ffmpeg: "system",
   cost: "energy",
   styles: "overview",
@@ -65,6 +65,7 @@ export default function Settings({ health, onClose, onDone, setToast, onOpenStyl
   const [msg, setMsg] = useState("");
   const [deps, setDeps] = useState(null);
   const [depsMsg, setDepsMsg] = useState("");
+  const [modelSources, setModelSources] = useState({});
 
   useEffect(() => {
     api.getLlm().then((c) =>
@@ -105,6 +106,9 @@ export default function Settings({ health, onClose, onDone, setToast, onOpenStyl
     setBusy(true);
     try {
       await fn();
+    } catch (e) {
+      setDepsMsg(String(e.message || e));
+      setToast(String(e.message || e));
     } finally {
       setBusy(false);
     }
@@ -367,6 +371,12 @@ export default function Settings({ health, onClose, onDone, setToast, onOpenStyl
                   </button>
                 </div>
 
+                {['runtime', 'runtime_nsfw'].map((key) => deps?.[key] ? (
+                  <div key={key} className={`alert ${deps[key].ok ? 'good' : 'bad'}`}>
+                    <strong>ComfyUI · {key === 'runtime' ? 'SFW' : 'NSFW'} · {deps[key].ok ? 'Compatível com o workflow' : 'Pendências para gerar'}</strong>
+                    {deps[key].errors.map((message, i) => <div key={i}>{message}</div>)}
+                  </div>
+                ) : null)}
                 <div className="deps-list">
                   <div className={`deps-row ${deps?.comfyui?.ok ? "ok" : "bad"}`}>
                     <StatusDot ok={!!deps?.comfyui?.ok} />
@@ -467,37 +477,50 @@ export default function Settings({ health, onClose, onDone, setToast, onOpenStyl
                 </div>
 
                 <div className="row" style={{ justifyContent: "space-between", marginTop: 4 }}>
-                  <strong style={{ fontSize: 13 }}>{t("settings.modelsTitle")}</strong>
+                  <strong style={{ fontSize: 13 }}>Modelos MiniMax H3 · SFW e NSFW</strong>
+                  {['sfw', 'nsfw'].map((pack) => (
                   <button
+                    key={pack}
                     type="button"
                     disabled={busy}
                     onClick={() =>
                       withBusy(async () => {
-                        setDepsMsg(t("settings.downloadingSfw"));
-                        const r = await api.comfyEnsure(true);
-                        setDeps(r.report);
-                        setDepsMsg(
-                          r.report?.models?.sfw_ready
-                            ? t("settings.sfwReady")
-                            : t("settings.sfwIncomplete")
-                        );
-                        setToast(t("settings.downloadDone"));
+                        setDepsMsg(`Baixando modelos H3 ${pack.toUpperCase()} faltantes. Arquivos grandes: aguarde a conclusão.`);
+                        const r = await api.downloadModelPack(pack);
+                        await refreshDeps();
+                        setDepsMsg(r.ok ? `Pacote ${pack.toUpperCase()} instalado. Reinicie o ComfyUI e verifique as dependências.` :
+                          r.results.filter((item) => !item.ok).map((item) => `${item.key}: ${item.error}`).join('\n'));
+                        setToast(r.ok ? t("settings.downloadDone") : 'Download incompleto: confira as pendências.');
                         onDone();
                       })
                     }
                   >
-                    {t("settings.downloadSfw")}
+                    Baixar H3 {pack.toUpperCase()} faltantes
                   </button>
+                  ))}
                 </div>
+                <p className="muted">Os pacotes incluem o modelo H3, o encoder de texto e os VAEs compartilhados. Configure o link direto quando não houver uma fonte definida. Após baixar, reinicie o ComfyUI e verifique as dependências.</p>
                 <div className="deps-list">
                   {Object.values(deps?.models?.models || models?.models || {}).map((m) => (
                     <div key={m.key} className={`deps-row ${m.ok ? "ok" : "bad"}`}>
                       <StatusDot ok={!!m.ok} />
                       <div>
                         <strong>
-                          {m.key} · {m.required_for?.toUpperCase?.() || ""}
+                          {m.label || m.key} · {m.required_for?.toUpperCase?.() || ""}
                         </strong>
                         <div className="deps-meta">{m.name || m.path}</div>
+                        <div className="deps-meta">Destino: {m.path}</div>
+                        <details>
+                          <summary>Link de download{!m.can_auto_download ? ' · configurar para baixar' : ''}</summary>
+                          <input aria-label={`Link direto ${m.key}`} type="url" placeholder="https://huggingface.co/.../resolve/main/arquivo.safetensors"
+                            value={modelSources[m.key] ?? m.download_url ?? ''}
+                            onChange={(e) => setModelSources((prev) => ({ ...prev, [m.key]: e.target.value }))} />
+                          <button type="button" disabled={busy} onClick={() => withBusy(async () => {
+                            await api.modelSource(m.key, modelSources[m.key] ?? m.download_url ?? '');
+                            await refreshDeps();
+                            setDepsMsg('Link salvo. Agora você pode baixar este modelo ou o pacote completo.');
+                          })}>Salvar link</button>
+                        </details>
                       </div>
                       {m.ok ? (
                         <span className="muted">{t("common.ok")}</span>
@@ -511,7 +534,7 @@ export default function Settings({ health, onClose, onDone, setToast, onOpenStyl
                                 setDepsMsg(t("settings.downloading", { key: m.key }));
                                 await api.downloadModel(m.key);
                                 await refreshDeps();
-                                setDepsMsg(t("settings.downloaded", { key: m.key }));
+                                setDepsMsg(`${t("settings.downloaded", { key: m.key })} Reinicie o ComfyUI e verifique as dependências.`);
                                 setToast(`${m.key} ok`);
                                 onDone();
                               })
@@ -521,9 +544,7 @@ export default function Settings({ health, onClose, onDone, setToast, onOpenStyl
                           </button>
                         </div>
                       ) : (
-                        <span className="muted" title={m.download_hint}>
-                          {t("common.manual")}
-                        </span>
+                        <span className="muted">Informe e salve o link direto para habilitar o download.</span>
                       )}
                     </div>
                   ))}

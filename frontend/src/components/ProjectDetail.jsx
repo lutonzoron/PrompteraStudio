@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from "react";
 import { api } from "../api.js";
 import { useConfirm } from "./ConfirmDialog.jsx";
-import { initials, isNsfw, posterSrc, statusLabel } from "../utils.js";
+import { initials, isNsfw, isProjectComplete, posterSrc, statusLabel } from "../utils.js";
 import { useT } from "../i18n/index.jsx";
 
 export default function ProjectDetail({
@@ -40,7 +40,7 @@ export default function ProjectDetail({
   const done = new Set(project.runner_state?.completed || project.progress?.completed_ns || []);
   const masterUrl = `/api/projects/${project.id}/master`;
   const remaining = Math.max(0, takes.length - done.size);
-  const isDone = project.status === "done" || (takes.length > 0 && remaining === 0 && masterOk);
+  const isDone = isProjectComplete({ ...project, has_master: masterOk });
   const nsfw = isNsfw(project);
 
   return (
@@ -163,7 +163,7 @@ export default function ProjectDetail({
         ) : (
           <div className="cta-cost">{t("project.calculatingCost")}</div>
         )}
-        <button
+        {!isDone && <button
           type="button"
           className="primary"
           disabled={busy || !takes.length || project.status === "archived"}
@@ -180,8 +180,8 @@ export default function ProjectDetail({
             }
           }}
         >
-          {isDone ? t("project.regenerate") : t("project.enqueue")}
-        </button>
+          {t("project.enqueue")}
+        </button>}
         <div className="row">
           <button
             type="button"

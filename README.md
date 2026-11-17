@@ -94,6 +94,37 @@ npm run dev
 
 Vite: http://127.0.0.1:5179 (proxies `/api` → 8790).
 
+## H3 models and dependency checks
+
+In **Settings → ComfyUI**, use **Baixar H3 SFW faltantes** or **Baixar H3 NSFW faltantes**
+to download the missing model, text encoder and shared audio/video VAEs. Individual
+downloads and destination paths are shown in the same section. Restart ComfyUI after
+installing models or nodes, then refresh the dependency check.
+
+Each model has a **Link de download** field for a direct HTTPS file URL (on Hugging
+Face, use `/resolve/main/...`, not `/blob/main/...`). Save the link before downloading.
+The exact `10Eros_Max_SingularityV2_PRISM2_PikaFlex_0.85_int8HQ` file has no bundled
+download URL; supply its source there. The NSFW text encoder has a default source:
+https://huggingface.co/ethanfel/Qwen3-VL-32B-Ultra-Heretic-H3-ComfyUI-INT8-ConvRot
+It is saved using the filename required by the existing workflow.
+
+For Hugging Face files requiring authentication, accept the repository terms and set
+`HF_TOKEN` in the environment before starting Promptera. Incomplete files and obvious
+non-safetensors responses are rejected. Downloads do not verify cryptographic hashes.
+
+The live check inspects ComfyUI's loaded node schemas and model lists before enqueuing
+and before submitting each render. Rejections include diagnostics and suggested fixes;
+execution failures such as insufficient VRAM still require a render attempt.
+
+## Activity logs
+
+The **Logs** menu shows timestamped actions, queue events, take generation and review,
+errors, and new console output from ComfyUI started by Promptera. Each video's page
+also shows its own logs. Entries are stored in the local SQLite database and survive
+restarts; collection begins when this version starts and does not recreate past events.
+The viewer refreshes every two seconds, supports loading earlier entries, following the
+latest lines, and downloading the displayed text. Dates use the browser's local time.
+
 ## Privacy
 
 - API keys and the DB stay under `data/` (Git-ignored)

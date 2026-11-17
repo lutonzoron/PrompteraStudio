@@ -2,6 +2,9 @@ from __future__ import annotations
 
 import shutil
 import subprocess
+import os
+import threading
+from urllib.parse import urlparse
 from pathlib import Path
 from typing import Any
 
@@ -19,6 +22,26 @@ from ..config import (
 )
 from ..llm.providers import llm_config
 from .hardware import hardware_report
+
+_download_lock = threading.Lock()
+
+
+def model_download_url(key: str) -> str | None:
+    return (db.get_setting('model_download_urls') or {}).get(key) or MODEL_DOWNLOAD_URLS.get(key)
+
+
+def set_model_download_url(key: str, url: str) -> None:
+    if key not in MODEL_PATHS:
+        raise ValueError('Modelo desconhecido')
+    parsed = urlparse(url)
+    if url and (parsed.scheme != 'https' or not parsed.hostname or parsed.username or parsed.password):
+        raise ValueError('Informe um link direto HTTPS, sem credenciais na URL.')
+    urls = dict(db.get_setting('model_download_urls') or {})
+    if url:
+        urls[key] = url
+    else:
+        urls.pop(key, None)
+    db.set_setting('model_download_urls', urls)
 
 
 def comfy_root() -> Path:
@@ -40,7 +63,7 @@ def model_status() -> dict[str, Any]:
         exists = path.exists()
         size = path.stat().st_size if exists else 0
         min_b = MODEL_MIN_BYTES.get(key, 1)
-        url = MODEL_DOWNLOAD_URLS.get(key)
+        url = model_download_url(key)
         out[key] = {
             "key": key,
             "name": name,
@@ -52,6 +75,9 @@ def model_status() -> dict[str, Any]:
             "required_for": "nsfw" if "nsfw" in key else ("both" if key.startswith("vae") else "sfw"),
             "can_auto_download": bool(url),
             "download_url": url,
+            "label": {'unet_sfw': 'MiniMax H3 · modelo SFW', 'unet_nsfw': 'MiniMax H3 · modelo NSFW',
+                      'clip_sfw': 'H3 · encoder de texto SFW', 'clip_nsfw': 'H3 · encoder de texto NSFW',
+                      'vae_v': 'H3 · VAE de vídeo (compartilhado)', 'vae_a': 'H3 · VAE de áudio (compartilhado)'}[key],
             "download_hint": (
                 f"Coloque o arquivo em models/{folder}/{name}"
                 + (" (download automático disponível)." if url else " (NSFW: baixe manualmente).")
@@ -75,15 +101,24 @@ def ensure_model_dirs() -> list[str]:
 
 
 def download_model(key: str) -> dict[str, Any]:
+    if not _download_lock.acquire(blocking=False):
+        return {'ok': False, 'error': 'Já existe um download em andamento. Aguarde sua conclusão.'}
+    try:
+        return _download_model(key)
+    finally:
+        _download_lock.release()
+
+
+def _download_model(key: str) -> dict[str, Any]:
     """Download one model file if a public HF URL is configured."""
     if key not in MODEL_PATHS:
         return {"ok": False, "key": key, "error": "Modelo desconhecido"}
-    url = MODEL_DOWNLOAD_URLS.get(key)
+    url = model_download_url(key)
     if not url:
         return {
             "ok": False,
             "key": key,
-            "error": "Sem URL automática — baixe manualmente (comum em packs NSFW)",
+            "error": "Configure o link direto HTTPS deste modelo em Configurações → ComfyUI → Modelos H3 e tente novamente.",
             "path": str(model_file(key)),
         }
     dest = model_file(key)
@@ -92,11 +127,23 @@ def download_model(key: str) -> dict[str, Any]:
     dest.parent.mkdir(parents=True, exist_ok=True)
     tmp = dest.with_suffix(dest.suffix + ".part")
     try:
-        with httpx.stream("GET", url, follow_redirects=True, timeout=None) as r:
+        headers = {}
+        if urlparse(url).hostname == 'huggingface.co' and os.environ.get('HF_TOKEN'):
+            headers['Authorization'] = 'Bearer ' + os.environ['HF_TOKEN']
+        with httpx.stream("GET", url, headers=headers, follow_redirects=True, timeout=httpx.Timeout(60.0, read=120.0)) as r:
             r.raise_for_status()
             with open(tmp, "wb") as f:
                 for chunk in r.iter_bytes(1024 * 1024):
                     f.write(chunk)
+            expected = r.headers.get('content-length')
+            size = tmp.stat().st_size
+            if size < MODEL_MIN_BYTES.get(key, 1) or (expected and size != int(expected)):
+                raise ValueError('Download incompleto ou arquivo menor que o esperado. Confira o link direto e tente novamente.')
+            # Safetensors starts with a little-endian JSON header length.
+            with tmp.open('rb') as downloaded:
+                header_size = int.from_bytes(downloaded.read(8), 'little')
+                if not 2 <= header_size <= min(size - 8, 100_000_000) or downloaded.read(1) != b'{':
+                    raise ValueError('O link não retornou um arquivo safetensors válido. Use o link direto do arquivo, não a página do modelo.')
         tmp.replace(dest)
     except Exception as exc:
         if tmp.exists():
@@ -104,8 +151,24 @@ def download_model(key: str) -> dict[str, Any]:
                 tmp.unlink()
             except OSError:
                 pass
-        return {"ok": False, "key": key, "error": str(exc), "path": str(dest)}
+        if isinstance(exc, httpx.HTTPStatusError):
+            code = exc.response.status_code
+            hint = ('Acesso negado: aceite os termos no Hugging Face e configure HF_TOKEN no ambiente do Promptera.'
+                    if code in (401, 403) else 'Arquivo não encontrado: atualize o link direto nas configurações.'
+                    if code == 404 else 'Falha no servidor de download. Tente novamente mais tarde.')
+            error = f'HTTP {code}. {hint}'
+        else:
+            error = f'{exc} Confira a conexão, o espaço em disco e o link em Configurações → ComfyUI.'
+        return {"ok": False, "key": key, "error": error, "path": str(dest)}
     return {"ok": True, "key": key, "message": "Baixado", "path": str(dest), "size": dest.stat().st_size}
+
+
+def download_model_pack(pack: str) -> dict[str, Any]:
+    if pack not in ('sfw', 'nsfw'):
+        raise ValueError('Pacote desconhecido')
+    keys = ('vae_v', 'vae_a', f'unet_{pack}', f'clip_{pack}')
+    results = [download_model(key) for key in keys]
+    return {'ok': all(r['ok'] for r in results), 'results': results, 'models': model_status()}
 
 
 def dependency_report() -> dict[str, Any]:

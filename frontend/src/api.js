@@ -18,6 +18,12 @@ async function req(path, opts = {}) {
 }
 
 export const api = {
+  logs: ({ projectId, after = 0, before } = {}) => {
+    const params = new URLSearchParams({ after: String(after), limit: "500" });
+    if (projectId) params.set("project_id", projectId);
+    if (before) params.set("before", String(before));
+    return req(`/api/logs?${params}`);
+  },
   health: () => req("/api/health"),
   onboarding: () => req("/api/onboarding"),
   hardware: () => req("/api/hardware"),
@@ -37,6 +43,10 @@ export const api = {
       method: "POST",
     }),
   downloadModel: (key) => req(`/api/comfy/models/${encodeURIComponent(key)}/download`, { method: "POST" }),
+  downloadModelPack: (pack) => req(`/api/comfy/model-packs/${pack}/download`, { method: 'POST' }),
+  modelSource: (key, url) => req(`/api/comfy/models/${encodeURIComponent(key)}/source`, {
+    method: 'PUT', body: JSON.stringify({ url }),
+  }),
   setComfyRoot: (path) =>
     req("/api/settings/comfyui_root", { method: "PUT", body: JSON.stringify({ path }) }),
 
@@ -60,6 +70,9 @@ export const api = {
   generateStory: (id, body) =>
     req(`/api/projects/${id}/generate-story`, { method: "POST", body: JSON.stringify(body) }),
   enqueue: (id) => req(`/api/projects/${id}/enqueue`, { method: "POST" }),
+  prioritize: (id) => req(`/api/projects/${id}/prioritize`, { method: "POST" }),
+  regenerateVideo: (id) => req(`/api/projects/${id}/regenerate`, { method: 'POST', body: JSON.stringify({ confirmed: true }) }),
+  footageExport: (id, body) => req(`/api/projects/${id}/footage-export`, { method: 'POST', body: JSON.stringify(body) }),
   dequeue: (id) => req(`/api/projects/${id}/dequeue`, { method: "POST" }),
   comfyInterrupt: () => req("/api/comfy/interrupt", { method: "POST" }),
   buildMaster: (id, force = true) =>

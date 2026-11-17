@@ -316,12 +316,6 @@ def reconcile_generating_statuses(live_slug: str | None = None) -> list[dict[str
             jid = str(job["project_id"])
             if any(str(p["id"]) == jid for p in active):
                 active_id = jid
-    if active_id is None:
-        ready = [p for p in active if not _blocked(p)]
-        ready.sort(key=lambda x: int(x.get("queue_pos") or 9999))
-        if ready:
-            active_id = str(ready[0]["id"])
-
     for p in active:
         if _blocked(p):
             want = "queued"
@@ -367,6 +361,7 @@ async def peek_comfy_queue() -> dict[str, Any]:
 
 async def external_sync_loop(interval_s: float = 15.0) -> None:
     """Every ~15s: sync external state files + broadcast Comfy queue peek."""
+    previous_comfy = None
     while True:
         try:
             comfy_q = await peek_comfy_queue()
@@ -374,6 +369,14 @@ async def external_sync_loop(interval_s: float = 15.0) -> None:
             live = comfy_q.get("live") if isinstance(comfy_q, dict) else None
             if isinstance(live, dict):
                 live_slug = live.get("slug")
+            current_comfy = (comfy_q.get("online"), (live or {}).get("prompt_id"), (live or {}).get("take"), live_slug)
+            if current_comfy != previous_comfy:
+                project = db.get_project_by_slug(live_slug) if live_slug else None
+                message = "ComfyUI online" if comfy_q.get("online") else "ComfyUI offline"
+                if live:
+                    message += f" · Geração em execução: {live}"
+                db.add_log(message, source="ComfyUI", project_id=project["id"] if project else None)
+                previous_comfy = current_comfy
             changed = sync_all_external(live_slug=live_slug)
             await broadcast({"type": "comfy_queue", **comfy_q})
             for summary in changed:

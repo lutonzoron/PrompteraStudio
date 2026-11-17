@@ -5,8 +5,9 @@ import { createPortal } from "react-dom";
  * Custom right-click menu.
  * items: [{ id, label, danger?, disabled?, sep? }]
  */
-export default function ContextMenu({ x, y, items, onPick, onClose }) {
+export default function ContextMenu({ x, y, items, onPick, onClose, pendingLabel }) {
   const ref = useRef(null);
+  const picked = useRef(false);
   const [pos, setPos] = useState({ left: x, top: y });
 
   useLayoutEffect(() => {
@@ -56,6 +57,9 @@ export default function ContextMenu({ x, y, items, onPick, onClose }) {
       role="menu"
       onContextMenu={(e) => e.preventDefault()}
     >
+      {pendingLabel && <div className="ctx-pending" role="status">
+        <span className="request-spinner" aria-hidden="true" /> {pendingLabel}
+      </div>}
       {items.map((item, i) =>
         item.sep ? (
           <div key={`sep-${i}`} className="ctx-sep" />
@@ -64,12 +68,14 @@ export default function ContextMenu({ x, y, items, onPick, onClose }) {
             key={item.id}
             type="button"
             role="menuitem"
+            title={item.title}
             className={`ctx-item ${item.danger ? "danger" : ""}`}
-            disabled={item.disabled}
+            disabled={item.disabled || !!pendingLabel}
             onClick={() => {
-              if (item.disabled) return;
-              onPick?.(item.id);
+              if (item.disabled || pendingLabel || picked.current) return;
+              picked.current = true;
               onClose?.();
+              onPick?.(item.id);
             }}
           >
             {item.label}

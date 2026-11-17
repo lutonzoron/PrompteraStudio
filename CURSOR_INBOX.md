@@ -5,10 +5,16 @@ Same Continuity rules as the MiniMax H3 + DaSiWa skill.
 
 ## Quick drop
 
+**Before writing the Inbox Markdown/script or pack, ask the user to confirm the
+video format and dimensions and wait for an explicit answer.** Offer phone 9:16
+(576×1024), horizontal 16:9 (1024×576), square 1:1 (768×768), or feed 4:5
+(768×960). An explicit choice already supplied for this pack counts as confirmation.
+Record `width`/`height` in `meta.json` and the format/resolution in the Markdown header.
+
 ```text
 data/inbox/<slug>/
   takes.json   # required — prompts in ENGLISH
-  meta.json    # optional — title/brief may be PT
+  meta.json    # required for new agent packs — confirmed width/height; title/brief may be PT
   roteiro.md   # optional — human script may be PT
 ```
 

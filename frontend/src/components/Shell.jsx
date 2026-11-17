@@ -11,6 +11,7 @@ export default function Shell({
   onCreate,
   onOpenSettings,
   onOpenStyles,
+  onOpenLogs,
   onOpenInbox,
   onComfyStart,
   inboxPending = 0,
@@ -43,6 +44,9 @@ export default function Shell({
           <button type="button" onClick={onOpenInbox}>
             {t("nav.inbox")}
             {inboxPending > 0 ? <span className="badge warn">{inboxPending}</span> : null}
+          </button>
+          <button type="button" className={activeNav === "logs" ? "active" : ""} onClick={onOpenLogs}>
+            {t("logs.nav")}
           </button>
           <button type="button" onClick={onOpenSettings}>
             {t("nav.settings")}

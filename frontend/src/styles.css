@@ -1708,6 +1708,9 @@ input:focus, select:focus, textarea:focus {
 
 /* —— Queue dock —— */
 .queue-dock {
+  display: flex;
+  flex-direction: column;
+  max-height: calc(100dvh - 36px);
   position: fixed;
   right: 18px;
   bottom: 18px;
@@ -1723,6 +1726,7 @@ input:focus, select:focus, textarea:focus {
 }
 .queue-dock.collapsed { width: auto; min-width: 180px; }
 .queue-dock-head {
+  flex-shrink: 0;
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -1734,7 +1738,27 @@ input:focus, select:focus, textarea:focus {
 .queue-dock:not(.collapsed) .queue-dock-head {
   border-bottom-color: var(--line);
 }
-.queue-dock-body { padding: 12px 14px 14px; }
+.queue-dock-body {
+  padding: 12px 14px 14px;
+  min-height: 0;
+  overflow: hidden;
+}
+.queue-dock-body > * { flex-shrink: 0; }
+.queue-dock-body > .q-waiting-section { flex-shrink: 1; min-height: 0; }
+.q-waiting-section > .q-section-label { flex-shrink: 0; }
+.q-waiting-list, .q-review-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  min-height: 0;
+  max-height: 248px;
+  overflow-y: auto;
+  overscroll-behavior-y: contain;
+  padding: 0 4px;
+  margin: 0 -4px;
+}
+.q-waiting-list > *, .q-review-list > * { flex-shrink: 0; }
+.q-review-list { max-height: 152px; }
 .q-meta-row {
   justify-content: space-between;
   align-items: center;
@@ -1932,6 +1956,13 @@ input:focus, select:focus, textarea:focus {
   align-items: center;
   gap: 4px;
 }
+.q-prioritize { display: inline-flex; align-items: center; justify-content: center; padding: 6px; color: var(--accent); }
+.footage-badge { color: var(--accent); font-size: 10px; }
+.footage-panel { margin-top: 20px; scroll-margin-top: 90px; }
+.footage-panel > * + * { margin-top: 14px; }
+.footage-panel .field input { max-width: 300px; }
+.footage-options { display: flex; gap: 16px; flex-wrap: wrap; }
+.footage-options label { display: flex; flex-direction: column; gap: 6px; font-size: 12px; }
 .queue-thumb {
   width: 40px;
   height: 56px;
@@ -2006,4 +2037,87 @@ pre.path {
   font-size: 12px;
   overflow: auto;
   font-family: var(--mono);
+}
+
+.logs-panel {
+  min-width: 0;
+  margin: 24px 0;
+  padding: 20px;
+  border: 1px solid var(--line);
+  border-radius: 16px;
+  background: var(--bg2);
+}
+.logs-heading, .logs-tools {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+}
+.logs-heading { margin-bottom: 16px; }
+.logs-heading h2 { margin: 0 0 6px; }
+.logs-heading p { margin: 0; font-size: 12px; }
+.logs-follow { display: inline-flex; align-items: center; gap: 8px; font-size: 12px; }
+.logs-follow input { width: auto; margin: 0; accent-color: var(--accent); }
+.logs-viewport {
+  height: 440px;
+  overflow: auto;
+  resize: vertical;
+  min-height: 180px;
+  padding: 14px;
+  background: var(--bg);
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  font: 12px/1.8 var(--mono);
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  scrollbar-gutter: stable;
+}
+.logs-viewport:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; }
+.log-line { padding: 3px 0; border-bottom: 1px solid var(--line); }
+.log-error, .log-critical { color: #ff9696; }
+.log-warning { color: #ebc16b; }
+.logs-older { margin-bottom: 10px; }
+.logs-count { margin: 10px 0 0; font-size: 12px; }
+.action-feedback {
+  position: fixed;
+  left: 50%;
+  bottom: 84px;
+  transform: translateX(-50%);
+  z-index: 90;
+  max-width: min(560px, calc(100vw - 32px));
+  padding: 12px 16px;
+  border: 1px solid var(--accent-dim);
+  border-radius: 12px;
+  background: var(--bg3);
+  box-shadow: var(--shadow);
+  pointer-events: none;
+}
+.action-feedback-line, .project-action-pending, .ctx-pending {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 12px;
+  line-height: 1.5;
+  overflow-wrap: anywhere;
+}
+.action-feedback-line + .action-feedback-line { margin-top: 8px; }
+.project-action-pending { color: var(--accent); }
+.ctx-pending { padding: 8px 10px; color: var(--accent); max-width: 280px; }
+.request-spinner {
+  display: inline-block;
+  flex: 0 0 14px;
+  width: 14px;
+  height: 14px;
+  border: 2px solid var(--line2);
+  border-top-color: var(--accent);
+  border-radius: 50%;
+  animation: request-spin .8s linear infinite;
+}
+@keyframes request-spin { to { transform: rotate(360deg); } }
+@media (prefers-reduced-motion: reduce) { .request-spinner { animation: none; } }
+@media (max-width: 640px) {
+  .logs-panel { padding: 12px; }
+  .logs-viewport { height: 340px; }
+  .logs-tools { justify-content: flex-start; }
 }

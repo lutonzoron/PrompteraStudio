@@ -2,8 +2,9 @@ import React, { useMemo, useState } from "react";
 import { api } from "../api.js";
 import ContextMenu from "./ContextMenu.jsx";
 import { useConfirm } from "./ConfirmDialog.jsx";
-import { cleanTitle, fmtDate, initials, isNsfw, posterSrc, statusLabel } from "../utils.js";
+import { cleanTitle, fmtDate, formatElapsed, initials, isNsfw, isProjectComplete, posterSrc, statusLabel } from "../utils.js";
 import { useLocale, useT } from "../i18n/index.jsx";
+import { runProjectAction, useProjectActions } from "../projectActions.js";
 
 const STATUS_RANK = {
   generating: 0,
@@ -57,19 +58,26 @@ function sortProjects(list, sort, collatorLocale) {
   return arr;
 }
 
-function menuItemsFor(p, t) {
+function menuItemsFor(p, t, regenerateAvailable = false) {
   const archived = p.status === "archived";
   const hasTakes = (p.takes || []).length > 0;
+  const inQueue = ["queued", "generating", "paused", "awaiting_review"].includes(p.status);
   const items = [
     { id: "open", label: t("library.open") },
-    {
-      id: "enqueue",
-      label: t("library.enqueue"),
-      disabled: archived || !hasTakes,
-    },
   ];
+  if (!isProjectComplete(p)) {
+    items.push({
+      id: "enqueue",
+      label: t(inQueue ? "actions.alreadyQueued" : "library.enqueue"),
+      disabled: archived || !hasTakes || inQueue,
+    });
+  }
   if (p.has_master) {
     items.push({ id: "download", label: t("library.downloadMaster") });
+  }
+  if (p.status === 'done' && hasTakes) {
+    items.push({ id: 'regenerate_video', label: t('library.regenerateVideo'), danger: true,
+                 disabled: !regenerateAvailable, title: regenerateAvailable ? undefined : t('library.regenerateNeedsRestart') });
   }
   items.push({ sep: true });
   items.push({
@@ -120,6 +128,7 @@ function Poster({ project, t }) {
 }
 
 export default function Library({
+  regenerateAvailable = false,
   projects,
   selectedId,
   showArchived,
@@ -132,7 +141,9 @@ export default function Library({
   const t = useT();
   const { locale, dateLocale } = useLocale();
   const confirm = useConfirm();
+  const pendingActions = useProjectActions();
   const [filter, setFilter] = useState("all");
+  const [category, setCategory] = useState('all');
   const [q, setQ] = useState("");
   const [menu, setMenu] = useState(null);
   const [sort, setSort] = useState(() => {
@@ -176,6 +187,7 @@ export default function Library({
 
   const filtered = sortProjects(
     projects.filter((p) => {
+      if (category !== 'all' && (p.category || 'general') !== category) return false;
       if (filter === "draft" && p.status !== "draft") return false;
       if (filter === "queued" && p.status !== "queued") return false;
       if (
@@ -198,80 +210,99 @@ export default function Library({
   );
 
   async function runAction(actionId, p) {
-    try {
-      if (actionId === "open") {
-        onSelect(p.id);
-        return;
+    const actionLabel = menuItemsFor(p, t, regenerateAvailable).find((item) => item.id === actionId)?.label || actionId;
+    return runProjectAction(p.id, t("actions.pending", { action: actionLabel, title: cleanTitle(p.title) }), async () => {
+      try {
+        if (actionId === "open") {
+          await onSelect(p.id);
+          return;
+        }
+        if (actionId === "enqueue") {
+          if (isProjectComplete(p) || ["queued", "generating", "paused", "awaiting_review"].includes(p.status)) return;
+          await api.enqueue(p.id);
+          setToast?.(t("library.queuedToast"));
+          await onRefresh?.();
+          return;
+        }
+        if (actionId === "download") {
+          const a = document.createElement("a");
+          a.href = `/api/projects/${p.id}/master`;
+          a.download = `${p.slug || "video"}_master.mp4`;
+          a.click();
+          return;
+        }
+        if (actionId === 'regenerate_video') {
+          if (!regenerateAvailable || p.status !== 'done') return;
+          const ok = await confirm({
+            title: t('library.regenerateTitle'),
+            message: t('library.regenerateWarning', { title: cleanTitle(p.title) }),
+            confirmLabel: t('library.regenerateConfirm'), danger: true,
+          });
+          if (!ok) return;
+          await api.regenerateVideo(p.id);
+          setToast?.(t('library.regenerateQueued'));
+          await onRefresh?.();
+          return;
+        }
+        if (actionId === "review_auto") {
+          await api.patchProject(p.id, { review_mode: "automatico" });
+          setToast?.(t("library.reviewAutoToast"));
+          await onRefresh?.();
+          return;
+        }
+        if (actionId === "review_manual") {
+          await api.patchProject(p.id, { review_mode: "com_revisao" });
+          setToast?.(t("library.reviewManualToast"));
+          await onRefresh?.();
+          return;
+        }
+        if (actionId === "copy_title") {
+          await navigator.clipboard.writeText(cleanTitle(p.title));
+          setToast?.(t("library.titleCopied"));
+          return;
+        }
+        if (actionId === "copy_slug") {
+          await navigator.clipboard.writeText(p.slug || p.id);
+          setToast?.(t("library.slugCopied"));
+          return;
+        }
+        if (actionId === "archive") {
+          const ok = await confirm({
+            title: t("library.archiveTitle"),
+            message: t("library.archiveMsg", { title: cleanTitle(p.title) }),
+            confirmLabel: t("common.archive"),
+          });
+          if (!ok) return;
+          await api.deleteProject(p.id, false);
+          setToast?.(t("library.archivedToast"));
+          await onRefresh?.();
+          return;
+        }
+        if (actionId === "delete") {
+          const ok = await confirm({
+            title: t("library.deleteTitle"),
+            message: t("library.deleteMsg", { title: cleanTitle(p.title) }),
+            confirmLabel: t("common.delete"),
+            danger: true,
+          });
+          if (!ok) return;
+          await api.deleteProject(p.id, true);
+          setToast?.(t("library.deletedToast"));
+          await onRefresh?.();
+          return;
+        }
+        if (actionId === "restore") {
+          await api.restoreProject(p.id);
+          setToast?.(t("library.restoredToast"));
+          await onRefresh?.();
+        }
+      } catch (e) {
+        setToast?.(String(e.message || e));
       }
-      if (actionId === "enqueue") {
-        await api.enqueue(p.id);
-        setToast?.(t("library.queuedToast"));
-        onRefresh?.();
-        return;
-      }
-      if (actionId === "download") {
-        const a = document.createElement("a");
-        a.href = `/api/projects/${p.id}/master`;
-        a.download = `${p.slug || "video"}_master.mp4`;
-        a.click();
-        return;
-      }
-      if (actionId === "review_auto") {
-        await api.patchProject(p.id, { review_mode: "automatico" });
-        setToast?.(t("library.reviewAutoToast"));
-        onRefresh?.();
-        return;
-      }
-      if (actionId === "review_manual") {
-        await api.patchProject(p.id, { review_mode: "com_revisao" });
-        setToast?.(t("library.reviewManualToast"));
-        onRefresh?.();
-        return;
-      }
-      if (actionId === "copy_title") {
-        await navigator.clipboard.writeText(cleanTitle(p.title));
-        setToast?.(t("library.titleCopied"));
-        return;
-      }
-      if (actionId === "copy_slug") {
-        await navigator.clipboard.writeText(p.slug || p.id);
-        setToast?.(t("library.slugCopied"));
-        return;
-      }
-      if (actionId === "archive") {
-        const ok = await confirm({
-          title: t("library.archiveTitle"),
-          message: t("library.archiveMsg", { title: cleanTitle(p.title) }),
-          confirmLabel: t("common.archive"),
-        });
-        if (!ok) return;
-        await api.deleteProject(p.id, false);
-        setToast?.(t("library.archivedToast"));
-        onRefresh?.();
-        return;
-      }
-      if (actionId === "delete") {
-        const ok = await confirm({
-          title: t("library.deleteTitle"),
-          message: t("library.deleteMsg", { title: cleanTitle(p.title) }),
-          confirmLabel: t("common.delete"),
-          danger: true,
-        });
-        if (!ok) return;
-        await api.deleteProject(p.id, true);
-        setToast?.(t("library.deletedToast"));
-        onRefresh?.();
-        return;
-      }
-      if (actionId === "restore") {
-        await api.restoreProject(p.id);
-        setToast?.(t("library.restoredToast"));
-        onRefresh?.();
-      }
-    } catch (e) {
-      setToast?.(String(e.message || e));
-    }
+    });
   }
+
+  const menuProject = menu ? projects.find((p) => p.id === menu.project.id) || menu.project : null;
 
   return (
     <div
@@ -293,6 +324,10 @@ export default function Library({
       </div>
 
       <div className="filters">
+        <select aria-label={t('category.label')} value={category} onChange={(e) => setCategory(e.target.value)}>
+          <option value="all">{t('category.all')}</option><option value="general">{t('category.general')}</option>
+          <option value="footage">Footage</option>
+        </select>
         <input placeholder={t("library.searchPh")} value={q} onChange={(e) => setQ(e.target.value)} />
         {filters.map(([id, label]) => (
           <button
@@ -376,6 +411,7 @@ export default function Library({
               <button
                 key={p.id}
                 type="button"
+                aria-busy={pendingActions.has(p.id)}
                 className={`proj-card ${selectedId === p.id ? "selected" : ""} ${
                   menu?.project?.id === p.id ? "ctx-open" : ""
                 }`}
@@ -397,7 +433,11 @@ export default function Library({
                   )}
                 </div>
                 <div className="meta">
+                  {pendingActions.has(p.id) && <span className="project-action-pending">
+                    <span className="request-spinner" aria-hidden="true" /> {pendingActions.get(p.id)}
+                  </span>}
                   <strong>{cleanTitle(p.title)}</strong>
+                  {p.category === 'footage' && <span className="footage-badge">Footage</span>}
                   <div className="muted" style={{ fontSize: 11 }}>
                     {t("library.takesMeta", { done: prog.completed, total: total || "—" })}
                     {p.has_master ? t("library.masterBadge") : ""}
@@ -408,6 +448,11 @@ export default function Library({
                   <div className="muted" style={{ fontSize: 10 }}>
                     {fmtDate(p.updated_at, dateLocale)}
                   </div>
+                  {(p.status === 'done' || p.stats?.videos_sec != null) && (
+                    <div className="muted" style={{ fontSize: 11 }}>
+                      {t('history.elapsed')}: {formatElapsed(p.stats?.videos_sec)} · {t('history.cost')}: {p.stats?.cost_brl != null ? `R$ ${Number(p.stats.cost_brl).toFixed(2)}` : '—'}
+                    </div>
+                  )}
                 </div>
               </button>
             );
@@ -419,9 +464,10 @@ export default function Library({
         <ContextMenu
           x={menu.x}
           y={menu.y}
-          items={menuItemsFor(menu.project, t)}
+          items={menuItemsFor(menuProject, t, regenerateAvailable)}
+          pendingLabel={pendingActions.get(menuProject.id)}
           onClose={() => setMenu(null)}
-          onPick={(id) => runAction(id, menu.project)}
+          onPick={(id) => runAction(id, menuProject)}
         />
       ) : null}
     </div>
