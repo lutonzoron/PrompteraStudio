@@ -12,9 +12,11 @@ export default function Shell({
   onOpenSettings,
   onOpenStyles,
   onOpenLogs,
+  onOpenQueue,
   onOpenInbox,
   onComfyStart,
   inboxPending = 0,
+  queueCount = 0,
 }) {
   const t = useT();
   const comfyOn = !!health?.comfy?.online;
@@ -33,6 +35,10 @@ export default function Shell({
             onClick={onHome}
           >
             {t("nav.studio")}
+          </button>
+          <button type="button" className={activeNav === "queue" ? "active" : ""} onClick={onOpenQueue}>
+            {t("nav.queue")}
+            {queueCount > 0 ? <span className="badge">{queueCount}</span> : null}
           </button>
           <button
             type="button"

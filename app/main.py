@@ -6,7 +6,7 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any, Literal
 
-from fastapi import FastAPI, HTTPException, Query
+from fastapi import FastAPI, File, HTTPException, Query, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
@@ -39,6 +39,7 @@ from .onboarding.setup import (
 from .queue.worker import (
     cancel_generation,
     prioritize_generation,
+    regenerate_from_take,
     regenerate_generation,
     enqueue_generation,
     pause_worker,
@@ -58,7 +59,20 @@ from .inbox.service import (
     import_takes_file,
 )
 from .posters import ensure_poster
-from .masters import build_master, build_preview, project_master_info, project_preview_info, resolve_master_path
+from .editor_master import (
+    build_editor_master,
+    list_master_versions,
+    restore_master_version,
+)
+from .masters import (
+    build_master,
+    build_preview,
+    index_take_files,
+    project_master_info,
+    project_preview_info,
+    project_takes_editor_info,
+    resolve_master_path,
+)
 from .external_sync import external_sync_loop, peek_comfy_queue, sync_all_external
 
 app = FastAPI(title="Promptera Studio", version="0.1.0")
@@ -216,6 +230,30 @@ class RegenerateBody(BaseModel):
     confirmed: Literal[True]
 
 
+class RegenerateFromBody(BaseModel):
+    take_n: int = Field(ge=1)
+    confirmed: Literal[True]
+    prompt: str | None = None
+
+
+class EditorAudioClipPatch(BaseModel):
+    id: str
+    offset_sec: float = Field(default=0.0, ge=-3600.0, le=3600.0)
+    volume: float = Field(default=0.7, ge=0.0, le=1.0)
+    track: int = Field(default=0, ge=0, le=31)
+    duration_sec: float | None = Field(default=None, ge=0.0, le=36000.0)
+    label: str | None = None
+
+
+class EditorMixBody(BaseModel):
+    muted_takes: list[int] = Field(default_factory=list)
+    audio_clips: list[EditorAudioClipPatch] | None = None
+
+
+class EditorMasterBody(BaseModel):
+    label: str | None = None
+
+
 # ---------- health / onboarding ----------
 
 
@@ -225,7 +263,13 @@ async def health() -> dict[str, Any]:
     return {
         "ok": True,
         "onboarding": onboarding_status(),
-        "features": {"prioritize": True, "footage": True, "regenerate": True},
+        "features": {
+            "prioritize": True,
+            "footage": True,
+            "regenerate": True,
+            "regenerate_from": True,
+            "take_editor": True,
+        },
         "comfy": comfy,
         "machine": load_or_detect_profile(),
         "pending_reviews": len(db.projects_awaiting_review()),
@@ -586,6 +630,11 @@ async def api_get_project(project_id: str) -> dict[str, Any]:
     p.update(project_preview_info(p))
     p['footage_exports'] = [dict(row, url=f"/api/projects/{project_id}/footage-exports/{row['id']}")
                             for row in db.footage_exports(project_id)]
+    from .footage import cctv_status
+    p.update(cctv_status(p))
+    p['editor_takes'] = project_takes_editor_info(p, project_id)
+    p['editor_mix'] = _editor_mix_payload(p, project_id)
+    p['master_versions'] = list_master_versions(p)
     return p
 
 
@@ -613,6 +662,56 @@ def api_build_master(project_id: str, force: bool = True) -> dict[str, Any]:
         return build_master(project_id, force=force)
     except Exception as exc:
         raise HTTPException(400, str(exc)) from exc
+
+
+@app.post("/api/projects/{project_id}/editor-master")
+def api_editor_master(project_id: str, body: EditorMasterBody = EditorMasterBody()) -> dict[str, Any]:
+    if not db.get_project(project_id):
+        raise HTTPException(404, "Projeto não encontrado")
+    try:
+        return build_editor_master(project_id, label=body.label)
+    except RuntimeError as exc:
+        raise HTTPException(409, str(exc)) from exc
+    except Exception as exc:
+        raise HTTPException(400, str(exc)) from exc
+
+
+@app.get("/api/projects/{project_id}/master-versions")
+def api_list_master_versions(project_id: str) -> dict[str, Any]:
+    project = db.get_project(project_id)
+    if not project:
+        raise HTTPException(404, "Projeto não encontrado")
+    return {"versions": list_master_versions(project)}
+
+
+@app.get("/api/projects/{project_id}/master-versions/{version_id}")
+def api_get_master_version(project_id: str, version_id: str):
+    project = db.get_project(project_id)
+    if not project:
+        raise HTTPException(404, "Projeto não encontrado")
+    versions = (project.get("stats") or {}).get("master_versions") or []
+    match = next((v for v in versions if str(v.get("id")) == str(version_id)), None)
+    if not match:
+        raise HTTPException(404, "Versão não encontrada")
+    path = Path(match.get("path") or "")
+    if not path.is_file():
+        raise HTTPException(404, "Arquivo da versão não encontrado")
+    return FileResponse(
+        path,
+        media_type="video/mp4",
+        filename=f"{project.get('slug') or project_id}_{version_id}.mp4",
+        headers={"Accept-Ranges": "bytes", "Cache-Control": "no-cache"},
+    )
+
+
+@app.post("/api/projects/{project_id}/master-versions/{version_id}/restore")
+def api_restore_master_version(project_id: str, version_id: str) -> dict[str, Any]:
+    if not db.get_project(project_id):
+        raise HTTPException(404, "Projeto não encontrado")
+    try:
+        return restore_master_version(project_id, version_id)
+    except RuntimeError as exc:
+        raise HTTPException(409, str(exc)) from exc
 
 
 @app.get("/api/projects/{project_id}/master")
@@ -674,6 +773,18 @@ def api_footage_export(project_id: str, body: FootageExportBody) -> dict[str, An
         raise HTTPException(409, 'Aguarde a conclusão do master para aplicar data/hora')
     try:
         return export_timestamp(project_id, body.start_time, body.position, body.color)
+    except (RuntimeError, ValueError) as exc:
+        raise HTTPException(400, str(exc)) from exc
+
+
+@app.post('/api/projects/{project_id}/footage-restore')
+def api_footage_restore(project_id: str) -> dict[str, Any]:
+    """Remove the CCTV clock from the active master and restore the preserved original."""
+    from .footage import remove_timestamp
+    if not db.get_project(project_id):
+        raise HTTPException(404, 'Projeto não encontrado')
+    try:
+        return remove_timestamp(project_id)
     except (RuntimeError, ValueError) as exc:
         raise HTTPException(400, str(exc)) from exc
 
@@ -791,6 +902,252 @@ async def api_regenerate(project_id: str, body: RegenerateBody) -> dict[str, Any
     except (RuntimeError, ValueError) as exc:
         raise HTTPException(409, str(exc)) from exc
     return {'ok': True, 'job': job, 'project': db.get_project(project_id)}
+
+
+@app.get('/api/projects/{project_id}/takes')
+def api_project_takes(project_id: str) -> dict[str, Any]:
+    p = db.get_project(project_id)
+    if not p:
+        raise HTTPException(404, 'Projeto não encontrado')
+    p['runner_state'] = db.get_runner_state(project_id)
+    return {'takes': project_takes_editor_info(p, project_id)}
+
+
+@app.get('/api/projects/{project_id}/takes/{take_n}/clip')
+def api_project_take_clip(project_id: str, take_n: int):
+    p = db.get_project(project_id)
+    if not p:
+        raise HTTPException(404, 'Projeto não encontrado')
+    indexed = index_take_files(p)
+    path = indexed.get(int(take_n))
+    if not path or not path.is_file():
+        raise HTTPException(404, f'Clip do take {take_n} não encontrado')
+    version = f'{path.stat().st_mtime_ns}-{path.stat().st_size}'
+    return FileResponse(
+        path,
+        media_type='video/mp4',
+        headers={'Cache-Control': 'public, max-age=30', 'X-Take-Clip-Version': version},
+    )
+
+
+@app.post('/api/projects/{project_id}/regenerate-from')
+async def api_regenerate_from(project_id: str, body: RegenerateFromBody) -> dict[str, Any]:
+    if not db.get_project(project_id):
+        raise HTTPException(404, 'Projeto não encontrado')
+    try:
+        job = await regenerate_from_take(project_id, body.take_n, prompt=body.prompt)
+    except (RuntimeError, ValueError) as exc:
+        raise HTTPException(409, str(exc)) from exc
+    project = db.get_project(project_id)
+    project['runner_state'] = db.get_runner_state(project_id)
+    project['editor_takes'] = project_takes_editor_info(project, project_id)
+    return {'ok': True, 'job': job, 'project': project, 'cascade': (job.get('payload') or {}).get('cascade')}
+
+
+def _editor_audio_dir(project_id: str) -> Path:
+    path = PROJECTS_DIR / project_id / 'editor'
+    path.mkdir(parents=True, exist_ok=True)
+    return path
+
+
+def _normalize_audio_clips(mix: dict[str, Any], project_id: str) -> list[dict[str, Any]]:
+    """Return audio_clips list, migrating legacy single audio_name if needed."""
+    clips = list(mix.get('audio_clips') or [])
+    if clips:
+        out = []
+        for i, raw in enumerate(clips):
+            if not isinstance(raw, dict) or not raw.get('id'):
+                continue
+            clip = dict(raw)
+            clip.setdefault('track', i)
+            clip.setdefault('offset_sec', 0.0)
+            clip.setdefault('volume', 0.7)
+            clip['url'] = f"/api/projects/{project_id}/editor-audio/{clip['id']}"
+            out.append(clip)
+        return out
+
+    # Legacy single bed → one clip
+    name = mix.get('audio_name')
+    if not name:
+        return []
+    legacy_id = 'legacy'
+    legacy_path = _editor_audio_dir(project_id) / str(name)
+    if not legacy_path.is_file():
+        return []
+    return [{
+        'id': legacy_id,
+        'file': str(name),
+        'label': str(name),
+        'offset_sec': float(mix.get('audio_offset_sec') or 0.0),
+        'volume': float(mix.get('audio_volume') if mix.get('audio_volume') is not None else 0.7),
+        'track': 0,
+        'duration_sec': mix.get('duration_sec'),
+        'url': f'/api/projects/{project_id}/editor-audio/{legacy_id}',
+    }]
+
+
+def _editor_mix_payload(project: dict[str, Any], project_id: str) -> dict[str, Any]:
+    mix = dict((project.get('stats') or {}).get('editor_mix') or {})
+    clips = _normalize_audio_clips(mix, project_id)
+    return {
+        'muted_takes': sorted({int(n) for n in (mix.get('muted_takes') or []) if int(n) > 0}),
+        'audio_clips': clips,
+    }
+
+
+def _audio_media_type(path: Path) -> str:
+    ext = path.suffix.lower()
+    if ext == '.wav':
+        return 'audio/wav'
+    if ext == '.ogg':
+        return 'audio/ogg'
+    if ext in {'.m4a', '.aac'}:
+        return 'audio/mp4'
+    if ext == '.flac':
+        return 'audio/flac'
+    return 'audio/mpeg'
+
+
+def _find_audio_clip(mix: dict[str, Any], project_id: str, clip_id: str) -> dict[str, Any] | None:
+    for clip in _normalize_audio_clips(mix, project_id):
+        if str(clip.get('id')) == str(clip_id):
+            return clip
+    return None
+
+
+@app.put('/api/projects/{project_id}/editor-mix')
+def api_put_editor_mix(project_id: str, body: EditorMixBody) -> dict[str, Any]:
+    project = db.get_project(project_id)
+    if not project:
+        raise HTTPException(404, 'Projeto não encontrado')
+    stats = dict(project.get('stats') or {})
+    mix = dict(stats.get('editor_mix') or {})
+    mix['muted_takes'] = sorted({int(n) for n in body.muted_takes if int(n) > 0})
+    if body.audio_clips is not None:
+        existing = {str(c.get('id')): dict(c) for c in _normalize_audio_clips(mix, project_id)}
+        updated_clips = []
+        for patch in body.audio_clips:
+            cur = existing.get(patch.id)
+            if not cur:
+                continue
+            cur['offset_sec'] = float(patch.offset_sec)
+            cur['volume'] = float(patch.volume)
+            cur['track'] = int(patch.track)
+            if patch.duration_sec is not None:
+                cur['duration_sec'] = float(patch.duration_sec)
+            if patch.label:
+                cur['label'] = patch.label
+            # drop derived url before persist
+            cur.pop('url', None)
+            updated_clips.append(cur)
+        mix['audio_clips'] = updated_clips
+        mix.pop('audio_name', None)
+        mix.pop('audio_volume', None)
+        mix.pop('audio_offset_sec', None)
+    stats['editor_mix'] = mix
+    updated = db.update_project(project_id, stats=stats)
+    return {'ok': True, 'editor_mix': _editor_mix_payload(updated or project, project_id)}
+
+
+@app.post('/api/projects/{project_id}/editor-audio')
+async def api_upload_editor_audio(
+    project_id: str,
+    file: UploadFile = File(...),
+    offset_sec: float = Query(0.0),
+) -> dict[str, Any]:
+    import uuid
+
+    project = db.get_project(project_id)
+    if not project:
+        raise HTTPException(404, 'Projeto não encontrado')
+    name = Path(file.filename or 'bed.mp3').name
+    ext = Path(name).suffix.lower()
+    if ext not in {'.mp3', '.wav', '.m4a', '.aac', '.ogg', '.flac'}:
+        raise HTTPException(400, 'Formato de áudio não suportado (use mp3, wav, m4a, aac, ogg ou flac)')
+    data = await file.read()
+    if not data:
+        raise HTTPException(400, 'Arquivo de áudio vazio')
+
+    clip_id = uuid.uuid4().hex[:10]
+    dest = _editor_audio_dir(project_id) / f'clip_{clip_id}{ext}'
+    dest.write_bytes(data)
+
+    stats = dict(project.get('stats') or {})
+    mix = dict(stats.get('editor_mix') or {})
+    clips = _normalize_audio_clips(mix, project_id)
+    # persist normalized legacy migration first
+    for c in clips:
+        c.pop('url', None)
+    used_tracks = {int(c.get('track') or 0) for c in clips}
+    track = 0
+    while track in used_tracks:
+        track += 1
+    clips.append({
+        'id': clip_id,
+        'file': dest.name,
+        'label': name,
+        'offset_sec': float(offset_sec or 0.0),
+        'volume': 0.7,
+        'track': track,
+        'duration_sec': None,
+    })
+    mix['audio_clips'] = clips
+    mix.pop('audio_name', None)
+    mix.setdefault('muted_takes', [])
+    stats['editor_mix'] = mix
+    updated = db.update_project(project_id, stats=stats)
+    return {'ok': True, 'editor_mix': _editor_mix_payload(updated or project, project_id), 'clip_id': clip_id}
+
+
+@app.get('/api/projects/{project_id}/editor-audio/{clip_id}')
+def api_get_editor_audio_clip(project_id: str, clip_id: str):
+    project = db.get_project(project_id)
+    if not project:
+        raise HTTPException(404, 'Projeto não encontrado')
+    mix = (project.get('stats') or {}).get('editor_mix') or {}
+    clip = _find_audio_clip(mix, project_id, clip_id)
+    if not clip:
+        raise HTTPException(404, 'Clip de áudio não encontrado')
+    # legacy id maps to audio_name file
+    file_name = clip.get('file') or mix.get('audio_name')
+    if not file_name:
+        raise HTTPException(404, 'Arquivo de áudio não encontrado')
+    path = _editor_audio_dir(project_id) / str(file_name)
+    if not path.is_file():
+        raise HTTPException(404, 'Arquivo de áudio não encontrado')
+    return FileResponse(path, media_type=_audio_media_type(path), headers={'Cache-Control': 'no-cache'})
+
+
+@app.delete('/api/projects/{project_id}/editor-audio/{clip_id}')
+def api_delete_editor_audio_clip(project_id: str, clip_id: str) -> dict[str, Any]:
+    project = db.get_project(project_id)
+    if not project:
+        raise HTTPException(404, 'Projeto não encontrado')
+    stats = dict(project.get('stats') or {})
+    mix = dict(stats.get('editor_mix') or {})
+    clips = _normalize_audio_clips(mix, project_id)
+    keep = []
+    removed = None
+    for clip in clips:
+        if str(clip.get('id')) == str(clip_id):
+            removed = clip
+            continue
+        clip.pop('url', None)
+        keep.append(clip)
+    if not removed:
+        raise HTTPException(404, 'Clip de áudio não encontrado')
+    file_name = removed.get('file')
+    if file_name:
+        try:
+            (_editor_audio_dir(project_id) / str(file_name)).unlink(missing_ok=True)
+        except OSError:
+            pass
+    mix['audio_clips'] = keep
+    if str(clip_id) == 'legacy':
+        mix.pop('audio_name', None)
+    stats['editor_mix'] = mix
+    updated = db.update_project(project_id, stats=stats)
+    return {'ok': True, 'editor_mix': _editor_mix_payload(updated or project, project_id)}
 
 
 @app.post("/api/projects/{project_id}/prioritize")
@@ -1037,7 +1394,7 @@ if FRONTEND_DIST.exists():
     @app.get("/{full_path:path}")
     def spa(full_path: str = "") -> FileResponse:
         if full_path.startswith("api/"):
-            raise HTTPException(404)
+            raise HTTPException(404, "Rota não encontrada")
         index = FRONTEND_DIST / "index.html"
         candidate = FRONTEND_DIST / full_path
         if full_path and candidate.exists() and candidate.is_file():

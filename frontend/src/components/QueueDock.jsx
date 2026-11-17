@@ -5,6 +5,8 @@ import { useConfirm } from "./ConfirmDialog.jsx";
 import { cleanTitle, initials, isNsfw, posterSrc, statusLabel } from "../utils.js";
 import { useT } from "../i18n/index.jsx";
 import { runProjectAction, useProjectActions } from "../projectActions.js";
+import RegenerationTakes from "./RegenerationTakes.jsx";
+import { regenerationView } from "../queueRegeneration.js";
 
 function queueDuration(minutes) {
   const value = Number(minutes);
@@ -13,27 +15,36 @@ function queueDuration(minutes) {
   return `${Math.floor(total / 60)} h ${String(total % 60).padStart(2, "0")} min`;
 }
 
-function QueueThumb({ project }) {
+function QueueThumb({ project, onOpen, openLabel }) {
   const [err, setErr] = useState(false);
   const src = posterSrc(project);
+  const label = openLabel || cleanTitle(project.title);
+  const body = isNsfw(project) ? (
+    <span className="queue-thumb nsfw-thumb">NSFW</span>
+  ) : !src || err ? (
+    <span className="queue-thumb queue-thumb-fallback" aria-hidden>
+      {initials(cleanTitle(project.title))}
+    </span>
+  ) : (
+    <img className="queue-thumb" src={src} alt="" onError={() => setErr(true)} />
+  );
 
-  if (isNsfw(project)) {
-    return <div className="queue-thumb nsfw-thumb">NSFW</div>;
-  }
-  if (!src || err) {
-    return (
-      <div className="queue-thumb queue-thumb-fallback" aria-hidden>
-        {initials(cleanTitle(project.title))}
-      </div>
-    );
-  }
+  if (!onOpen) return body;
+
   return (
-    <img
-      className="queue-thumb"
-      src={src}
-      alt=""
-      onError={() => setErr(true)}
-    />
+    <button
+      type="button"
+      className="queue-thumb-btn"
+      title={label}
+      aria-label={label}
+      onClick={(e) => {
+        e.stopPropagation();
+        onOpen();
+      }}
+      onDoubleClick={(e) => e.stopPropagation()}
+    >
+      {body}
+    </button>
   );
 }
 
@@ -345,31 +356,52 @@ export default function QueueDock({ queue, onOpenReview, onRefresh, setToast, on
                   setMenu({ x: e.clientX, y: e.clientY, project: generating });
                 }}
               >
-                {generating ? <QueueThumb project={generating} /> : <div className="queue-thumb" />}
+                {generating ? (
+                  <QueueThumb
+                    project={generating}
+                    openLabel={t("queue.openProject")}
+                    onOpen={() => onOpenProject?.(generating.id)}
+                  />
+                ) : (
+                  <div className="queue-thumb" />
+                )}
                 <div className="q-now-main">
-                  <div className="q-now-top">
-                    <strong>{nowTitle || t("queue.generating")}</strong>
-                    <span className="q-live-pill">{t("queue.live")}</span>
-                  </div>
-                  <div className="q-now-msg">{displayNowMsg}</div>
-                  <div className="q-now-progress-row">
-                    <div className="progress q-now-progress">
-                      <i style={{ width: `${Math.max(2, Math.min(100, nowPct))}%` }} />
-                    </div>
-                    <span className="q-now-pct">{nowPct}%</span>
-                  </div>
-                  <div className="muted" style={{ fontSize: 11 }}>
-                    {nowTotal
-                      ? t("library.takesMeta", { done: nowDone, total: nowTotal })
-                      : generating?.external
-                        ? t("queue.externalRunner")
-                        : t("queue.internalWorker")}
-                    {now?.source === "external" || generating?.external
-                      ? t("queue.tagExternal")
-                      : now || generating
-                        ? t("queue.tagInternal")
-                        : ""}
-                  </div>
+                  {regenerationView(generating) ? (
+                    <>
+                      <div className="q-now-top">
+                        <strong>{nowTitle || t("queue.generating")}</strong>
+                        <span className="q-live-pill">{t("queue.live")}</span>
+                        <span className="qb-pill regen">{t("regeneration.badge")}</span>
+                      </div>
+                      <RegenerationTakes project={generating} active currentTake={nowTake} estimate={estimate?.current} />
+                    </>
+                  ) : (
+                    <>
+                      <div className="q-now-top">
+                        <strong>{nowTitle || t("queue.generating")}</strong>
+                        <span className="q-live-pill">{t("queue.live")}</span>
+                      </div>
+                      <div className="q-now-msg">{displayNowMsg}</div>
+                      <div className="q-now-progress-row">
+                        <div className="progress q-now-progress">
+                          <i style={{ width: `${Math.max(2, Math.min(100, nowPct))}%` }} />
+                        </div>
+                        <span className="q-now-pct">{nowPct}%</span>
+                      </div>
+                      <div className="muted" style={{ fontSize: 11 }}>
+                        {nowTotal
+                          ? t("library.takesMeta", { done: nowDone, total: nowTotal })
+                          : generating?.external
+                            ? t("queue.externalRunner")
+                            : t("queue.internalWorker")}
+                        {now?.source === "external" || generating?.external
+                          ? t("queue.tagExternal")
+                          : now || generating
+                            ? t("queue.tagInternal")
+                            : ""}
+                      </div>
+                    </>
+                  )}
                 </div>
                 {generating ? (
                   <div className="queue-item-actions">
@@ -446,7 +478,11 @@ export default function QueueDock({ queue, onOpenReview, onRefresh, setToast, on
               <div className="q-review-list">
               {pending.map((p) => (
                 <div key={`rev-${p.id}`} className="queue-item">
-                  <QueueThumb project={p} />
+                  <QueueThumb
+                    project={p}
+                    openLabel={t("queue.openProject")}
+                    onOpen={() => onOpenProject?.(p.id)}
+                  />
                   <div>
                     <strong style={{ fontSize: 13 }}>{cleanTitle(p.title)}</strong>
                     <div className="muted">
@@ -530,31 +566,46 @@ export default function QueueDock({ queue, onOpenReview, onRefresh, setToast, on
                   <span className="q-drag-handle" title={t("queue.dragHandle")} aria-hidden>
                     ⋮⋮
                   </span>
-                  <QueueThumb project={p} />
+                  <QueueThumb
+                    project={p}
+                    openLabel={t("queue.openProject")}
+                    onOpen={() => onOpenProject?.(p.id)}
+                  />
                   <div className="queue-item-main">
-                    <strong style={{ fontSize: 13 }}>{cleanTitle(p.title)}</strong>
-                    {pendingActions.has(p.id) && <div className="project-action-pending">
-                      <span className="request-spinner" aria-hidden="true" /> {pendingActions.get(p.id)}
-                    </div>}
-                    <div className="muted">
-                      {waitingStatusLine(p, comfyQ, t)}
-                      {" · "}
-                      {p.progress
-                        ? `${p.progress.completed}/${p.progress.total}`
-                        : (p.takes || []).length}{" "}
-                      takes
-                    </div>
-                    {p.progress?.total ? (
-                      <div className="progress q-item-progress">
-                        <i
-                          style={{
-                            width: `${Math.round(
-                              (100 * (p.progress.completed || 0)) / p.progress.total
-                            )}%`,
-                          }}
-                        />
-                      </div>
-                    ) : null}
+                    {regenerationView(p) ? (
+                      <>
+                        {pendingActions.has(p.id) && <div className="project-action-pending">
+                          <span className="request-spinner" aria-hidden="true" /> {pendingActions.get(p.id)}
+                        </div>}
+                        <RegenerationTakes project={p} />
+                      </>
+                    ) : (
+                      <>
+                        <strong style={{ fontSize: 13 }}>{cleanTitle(p.title)}</strong>
+                        {pendingActions.has(p.id) && <div className="project-action-pending">
+                          <span className="request-spinner" aria-hidden="true" /> {pendingActions.get(p.id)}
+                        </div>}
+                        <div className="muted">
+                          {waitingStatusLine(p, comfyQ, t)}
+                          {" · "}
+                          {p.progress
+                            ? `${p.progress.completed}/${p.progress.total}`
+                            : (p.takes || []).length}{" "}
+                          takes
+                        </div>
+                        {p.progress?.total ? (
+                          <div className="progress q-item-progress">
+                            <i
+                              style={{
+                                width: `${Math.round(
+                                  (100 * (p.progress.completed || 0)) / p.progress.total
+                                )}%`,
+                              }}
+                            />
+                          </div>
+                        ) : null}
+                      </>
+                    )}
                   </div>
                   <div className="queue-item-actions">
                     {!p.external && <button type="button" className="q-prioritize"

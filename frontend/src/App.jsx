@@ -4,8 +4,10 @@ import { beep, notify } from "./utils.js";
 import Shell from "./components/Shell.jsx";
 import Library from "./components/Library.jsx";
 import ProjectPage from "./components/ProjectPage.jsx";
+import TakeEditor from "./components/TakeEditor.jsx";
 import CreateSheet from "./components/CreateSheet.jsx";
 import QueueDock from "./components/QueueDock.jsx";
+import QueueBoard from "./components/QueueBoard.jsx";
 import ReviewModal from "./components/ReviewModal.jsx";
 import Settings from "./components/Settings.jsx";
 import StyleGallery from "./components/StyleGallery.jsx";
@@ -18,6 +20,16 @@ import { useT } from "./i18n/index.jsx";
 function readHashProjectId() {
   const m = String(window.location.hash || "").match(/^#\/p\/([^/]+)/);
   return m ? decodeURIComponent(m[1]) : null;
+}
+
+function readHashPage() {
+  const hash = String(window.location.hash || "");
+  if (hash === "#/logs") return "logs";
+  if (hash === "#/queue") return "queue";
+  if (hash === "#/styles") return "styles";
+  if (/^#\/p\/[^/]+\/editor\/?$/.test(hash)) return "editor";
+  if (hash.startsWith("#/p/")) return "studio";
+  return "studio";
 }
 
 export default function App() {
@@ -34,11 +46,25 @@ export default function App() {
   const [error, setError] = useState(null);
   const [showArchived, setShowArchived] = useState(false);
   const [sheet, setSheet] = useState(null); // create | settings | inbox
-  const [page, setPage] = useState(() => window.location.hash === "#/logs" ? "logs" : "studio");
+  const [page, setPage] = useState(() => readHashPage());
   const [inbox, setInbox] = useState(null);
   const esRef = useRef(null);
+  const selectedIdRef = useRef(selectedId);
+  const openProjectRef = useRef(null);
+  const refreshRef = useRef(null);
+  const tRef = useRef(t);
+  selectedIdRef.current = selectedId;
+  tRef.current = t;
 
   const pendingReviews = queue?.pending_reviews?.length || 0;
+  const queueCount = (queue?.items?.length || 0) + (queue?.pending_reviews?.length || 0);
+
+  const applyProject = useCallback((p) => {
+    if (!p?.id) return;
+    // Ignore stale responses from a previous selection.
+    if (selectedIdRef.current && p.id !== selectedIdRef.current) return;
+    setProject(p);
+  }, []);
 
   const goHome = useCallback(() => {
     setSheet(null);
@@ -55,22 +81,45 @@ export default function App() {
     setPage("styles");
     setSelectedId(null);
     setProject(null);
-    if (window.location.hash) {
-      history.replaceState(null, "", window.location.pathname + window.location.search);
-    }
+    window.location.hash = "#/styles";
   }, []);
 
-  const openProject = useCallback(async (id) => {
+  const openQueue = useCallback(() => {
+    setSheet(null);
+    setPage("queue");
+    setSelectedId(null);
+    setProject(null);
+    window.location.hash = "#/queue";
+  }, []);
+
+  const openProject = useCallback((id) => {
     if (!id) {
       goHome();
       return;
     }
+    setSheet(null);
     setPage("studio");
+    // Drop previous project immediately so a late fetch cannot paint the wrong video.
+    setProject((prev) => (prev?.id === id ? prev : null));
     setSelectedId(id);
-    window.location.hash = `#/p/${id}`;
-    const p = await api.project(id);
-    setProject(p);
+    const nextHash = `#/p/${id}`;
+    if (window.location.hash !== nextHash) {
+      window.location.hash = nextHash;
+    }
   }, [goHome]);
+  openProjectRef.current = openProject;
+
+  const openEditor = useCallback((id) => {
+    if (!id) return;
+    setSheet(null);
+    setPage("editor");
+    setProject((prev) => (prev?.id === id ? prev : null));
+    setSelectedId(id);
+    const nextHash = `#/p/${id}/editor`;
+    if (window.location.hash !== nextHash) {
+      window.location.hash = nextHash;
+    }
+  }, []);
 
   const refresh = useCallback(async () => {
     try {
@@ -91,10 +140,11 @@ export default function App() {
       setError(String(e.message || e));
     }
   }, [showArchived]);
+  refreshRef.current = refresh;
 
   useEffect(() => {
     refresh();
-    const tick = setInterval(refresh, 8000);
+    const tick = setInterval(() => refreshRef.current?.(), 8000);
     return () => clearInterval(tick);
   }, [refresh]);
 
@@ -103,14 +153,31 @@ export default function App() {
       setProject(null);
       return;
     }
-    api.project(selectedId).then(setProject).catch(() => setToast(t("app.projectMissing")));
-  }, [selectedId, t]);
+    let cancelled = false;
+    api
+      .project(selectedId)
+      .then((p) => {
+        if (!cancelled) applyProject(p);
+      })
+      .catch(() => {
+        if (!cancelled) setToast(tRef.current("app.projectMissing"));
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [selectedId, applyProject]);
 
   useEffect(() => {
     const onHash = () => {
       const id = readHashProjectId();
-      setSelectedId(id);
-      setPage(window.location.hash === "#/logs" ? "logs" : "studio");
+      const nextPage = readHashPage();
+      setSelectedId((prev) => (prev === id ? prev : id));
+      setPage((prev) => (prev === nextPage ? prev : nextPage));
+      if (id) {
+        setProject((prev) => (prev?.id === id ? prev : null));
+      } else if (nextPage === "studio") {
+        setProject(null);
+      }
     };
     window.addEventListener("hashchange", onHash);
     return () => window.removeEventListener("hashchange", onHash);
@@ -128,19 +195,21 @@ export default function App() {
     es.onmessage = (ev) => {
       try {
         const data = JSON.parse(ev.data);
+        const tt = tRef.current;
+        const refreshNow = () => refreshRef.current?.();
         if (data.type === "review_needed") {
           setReview(data);
           beep();
           notify(
-            t("review.notifyTitle"),
-            t("review.notifyBody", {
+            tt("review.notifyTitle"),
+            tt("review.notifyBody", {
               take: data.take,
               total: data.total,
               title: data.title || "",
             })
           );
-          setToast(t("review.waitingToast", { take: data.take }));
-          refresh();
+          setToast(tt("review.waitingToast", { take: data.take }));
+          refreshNow();
         }
         if (
           [
@@ -157,40 +226,51 @@ export default function App() {
             "comfy_queue",
           ].includes(data.type)
         ) {
-          refresh();
+          refreshNow();
           if (data.type === "job_done") {
-            setToast(t("app.jobDone"));
-            if (data.project_id) openProject(data.project_id);
+            setToast(tt("app.jobDone"));
+            if (data.project_id) openProjectRef.current?.(data.project_id);
           }
-          if (data.type === "job_failed") setToast(t("app.jobFailed", { error: data.error }));
+          if (data.type === "job_failed") setToast(tt("app.jobFailed", { error: data.error }));
           if (data.type === "inbox_imported")
-            setToast(t("inbox.approved", { title: data.title || "" }));
+            setToast(tt("inbox.approved", { title: data.title || "" }));
           if (data.type === "inbox_pending") {
             const n = data.count || (data.names || []).length;
-            setToast(n ? t("inbox.pendingToast", { n }) : t("inbox.updated"));
+            setToast(n ? tt("inbox.pendingToast", { n }) : tt("inbox.updated"));
             beep();
-            notify(t("inbox.notifyTitle"), t("inbox.notifyBody", { n }));
+            notify(tt("inbox.notifyTitle"), tt("inbox.notifyBody", { n }));
             api.inbox().then(setInbox).catch(() => {});
           }
           if (data.type === "inbox_changed" || data.type === "inbox_rejected") {
             api.inbox().then(setInbox).catch(() => {});
           }
           if (
-            ["external_sync", "project_updated", "job_progress", "job_started", "job_failed", "job_preempted"].includes(data.type) &&
+            [
+              "external_sync",
+              "project_updated",
+              "job_progress",
+              "job_started",
+              "job_queued",
+              "job_done",
+              "job_failed",
+              "job_preempted",
+            ].includes(data.type) &&
             data.project_id &&
-            selectedId === data.project_id
+            selectedIdRef.current === data.project_id
           ) {
-            api.project(data.project_id).then(setProject).catch(() => {});
+            api.project(data.project_id).then(applyProject).catch(() => {});
           }
         }
         if (data.type === "review_submitted") {
           setReview(null);
-          refresh();
+          refreshNow();
         }
-      } catch {}
+      } catch {
+        /* ignore malformed SSE */
+      }
     };
     return () => es.close();
-  }, [refresh, openProject, selectedId, t]);
+  }, [applyProject]);
 
   useEffect(() => {
     if (!toast) return;
@@ -217,19 +297,23 @@ export default function App() {
       <Shell
         health={health}
         pendingReviews={pendingReviews}
-        activeNav={page}
+        activeNav={page === "editor" ? "studio" : page}
         onHome={goHome}
         onCreate={() => setSheet("create")}
         onOpenSettings={() => setSheet("settings")}
         onOpenStyles={openStyles}
         onOpenLogs={() => {
-          goHome();
+          setSheet(null);
+          setSelectedId(null);
+          setProject(null);
           setPage("logs");
           window.location.hash = "#/logs";
         }}
+        onOpenQueue={openQueue}
         onOpenInbox={() => setSheet("inbox")}
         onComfyStart={() => api.comfyStart().then(refresh)}
         inboxPending={inbox?.pending_count || inbox?.pending?.length || 0}
+        queueCount={queueCount}
       >
         {error ? (
           <div className="alert bad" style={{ marginBottom: 14 }}>
@@ -245,7 +329,26 @@ export default function App() {
           </div>
         ) : null}
 
-        {page === "logs" ? <LogsPanel /> : page === "styles" ? (
+        {page === "logs" ? (
+          <LogsPanel />
+        ) : page === "queue" ? (
+          <div className="queue-page">
+            <header className="queue-page-head">
+              <div>
+                <h1>{t("nav.queue")}</h1>
+                <p className="muted">{t("queueBoard.pageHint")}</p>
+              </div>
+            </header>
+            <QueueBoard
+              queue={queue}
+              prioritizeAvailable={!!health?.features?.prioritize}
+              onRefresh={refresh}
+              setToast={setToast}
+              onOpenProject={openProject}
+              onOpenReview={setReview}
+            />
+          </div>
+        ) : page === "styles" ? (
           <StyleGallery
             styles={styles}
             busy={busy}
@@ -253,7 +356,17 @@ export default function App() {
             setToast={setToast}
             onChange={refresh}
           />
-        ) : project && selectedId ? (
+        ) : page === "editor" && selectedId && project?.id === selectedId ? (
+          <TakeEditor
+            project={project}
+            setProject={setProject}
+            busy={busy}
+            setBusy={setBusy}
+            setToast={setToast}
+            onRefresh={refresh}
+            onBack={() => openProject(selectedId)}
+          />
+        ) : selectedId && project?.id === selectedId ? (
           <ProjectPage
             footageAvailable={!!health?.features?.footage}
             project={project}
@@ -263,7 +376,12 @@ export default function App() {
             setToast={setToast}
             onRefresh={refresh}
             onBack={goHome}
+            onOpenEditor={() => openEditor(selectedId)}
           />
+        ) : selectedId ? (
+          <div className="empty-hero">
+            <p className="muted">{t("app.loadingProject")}</p>
+          </div>
         ) : (
           <Library
             regenerateAvailable={!!health?.features?.regenerate}
@@ -274,6 +392,7 @@ export default function App() {
             onSelect={openProject}
             onCreate={() => setSheet("create")}
             onRefresh={refresh}
+            onOpenQueue={openQueue}
             setToast={setToast}
           />
         )}

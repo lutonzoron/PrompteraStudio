@@ -54,7 +54,12 @@ def log_event(event: dict) -> None:
 ACTION_LABELS = {
     "prioritize": "Priorizar vídeo",
     "regenerate": "Regerar vídeo e substituir resultado atual",
+    "regenerate-from": "Regerar take e continuidade da sessão",
+    "editor-mix": "Salvar mix do editor",
+    "editor-audio": "Áudio do editor",
+    "editor-master": "Gerar master do mix da timeline",
     "footage-export": "Aplicar data/hora CCTV",
+    "footage-restore": "Remover data/hora CCTV e restaurar original",
     "enqueue": "Enfileirar vídeo", "dequeue": "Remover vídeo da fila",
     "generate-story": "Gerar roteiro", "build-master": "Montar vídeo final",
     "review": "Revisar take", "restore": "Restaurar vídeo", "dice": "Sortear história",

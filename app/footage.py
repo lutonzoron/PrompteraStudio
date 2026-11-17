@@ -10,6 +10,7 @@ import uuid
 from threading import Event
 from datetime import datetime, timedelta
 from pathlib import Path
+from typing import Any
 
 from . import db
 from .config import PROJECTS_DIR
@@ -126,6 +127,62 @@ def export_timestamp(project_id: str, start: datetime | None = None, position: s
     # Read again so unrelated settings and generation stats are preserved.
     current = db.get_project(project_id)
     stats = dict(current.get('stats') or {})
-    stats.update(master=str(output), original_master=str(source))
+    # Keep the first clean master forever; never point original_master at a CCTV render.
+    kept = stats.get('original_master')
+    if not (kept and Path(str(kept)).is_file()):
+        stats['original_master'] = str(source)
+    stats['master'] = str(output)
+    stats['cctv_active'] = True
     db.update_project(project_id, stats=stats)
-    return {**record, 'url': f'/api/projects/{project_id}/footage-exports/{export_id}'}
+    return {**record, 'url': f'/api/projects/{project_id}/footage-exports/{export_id}',
+            'cctv_active': True, 'original_master': stats['original_master']}
+
+
+def _resolved(path: str | Path | None) -> Path | None:
+    if not path:
+        return None
+    try:
+        p = Path(path)
+    except TypeError:
+        return None
+    return p.resolve() if p.is_file() else None
+
+
+def cctv_status(project: dict | None) -> dict[str, Any]:
+    """Whether the active master is a CCTV stamp over a preserved original."""
+    if not project:
+        return {'cctv_active': False, 'has_original_master': False, 'original_master': None}
+    stats = project.get('stats') or {}
+    original = _resolved(stats.get('original_master'))
+    master = _resolved(stats.get('master')) or resolve_master_path(project)
+    master_r = master.resolve() if master and master.is_file() else None
+    # Path comparison is the source of truth; the flag is just a cache for UIs.
+    active = bool(original and master_r and original != master_r)
+    return {
+        'cctv_active': active,
+        'has_original_master': bool(original),
+        'original_master': str(original) if original else None,
+    }
+
+
+def remove_timestamp(project_id: str) -> dict:
+    """Restore the preserved original as the active master."""
+    project = db.get_project(project_id)
+    if not project or project.get('category') != 'footage':
+        raise RuntimeError('Este vídeo precisa estar na categoria Footage')
+    status = cctv_status(project)
+    original = _resolved(status.get('original_master') or (project.get('stats') or {}).get('original_master'))
+    if not original:
+        raise RuntimeError('Não há master original preservado para restaurar')
+    current = db.get_project(project_id)
+    stats = dict(current.get('stats') or {})
+    stats['master'] = str(original)
+    stats['original_master'] = str(original)
+    stats['cctv_active'] = False
+    db.update_project(project_id, stats=stats)
+    return {
+        'ok': True,
+        'master': str(original),
+        'original_master': str(original),
+        'cctv_active': False,
+    }

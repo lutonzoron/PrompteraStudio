@@ -1,0 +1,1171 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Promptera · Mock · Página do vídeo (abas · denso)</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=DM+Sans:ital,opsz,wght@0,9..40,400;0,9..40,500;0,9..40,600;0,9..40,700;1,9..40,400&family=Plus+Jakarta+Sans:wght@600;700;800&display=swap" rel="stylesheet" />
+  <style>
+    :root {
+      --bg: #070807;
+      --bg2: #0e100e;
+      --bg3: #151815;
+      --bg4: #1c211c;
+      --line: #2a322a;
+      --line2: #3a453a;
+      --text: #f2f5ef;
+      --muted: #8b9688;
+      --accent: #c8f542;
+      --accent-dim: #9bc41f;
+      --accent-ink: #0c1200;
+      --danger: #ff6b6b;
+      --ok: #7ddea0;
+      --font: "DM Sans", system-ui, sans-serif;
+      --display: "Plus Jakarta Sans", "DM Sans", system-ui, sans-serif;
+      --mono: ui-monospace, "Cascadia Code", Consolas, monospace;
+      --desk-h: min(78vh, 760px);
+    }
+
+    * { box-sizing: border-box; }
+    html, body { margin: 0; min-height: 100%; }
+    body {
+      font-family: var(--font);
+      color: var(--text);
+      background:
+        radial-gradient(900px 480px at 80% -8%, #1a2a0a 0%, transparent 55%),
+        radial-gradient(640px 360px at 0% 100%, #122018 0%, transparent 50%),
+        var(--bg);
+      -webkit-font-smoothing: antialiased;
+    }
+
+    button, select, input, textarea { font: inherit; color: inherit; }
+    button {
+      cursor: pointer;
+      border: 1px solid var(--line);
+      background: var(--bg4);
+      border-radius: 999px;
+      padding: 8px 12px;
+      font-size: 13px;
+      font-weight: 600;
+    }
+    button:hover { border-color: var(--accent-dim); color: var(--accent); }
+    button.primary {
+      background: var(--accent);
+      border-color: var(--accent);
+      color: var(--accent-ink);
+    }
+    button.primary:hover { filter: brightness(1.05); color: var(--accent-ink); }
+    button.ghost { background: transparent; }
+    button.danger {
+      border-color: #5a3030;
+      color: #ffb0b0;
+      background: #1a1010;
+    }
+    .muted { color: var(--muted); }
+
+    .mock-banner {
+      position: sticky;
+      top: 0;
+      z-index: 50;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      padding: 8px 16px;
+      background: linear-gradient(90deg, #1a240c, #121812);
+      border-bottom: 1px solid rgba(200, 245, 66, 0.25);
+      font-size: 12px;
+      flex-wrap: wrap;
+    }
+    .mock-banner .tag {
+      font-size: 10px;
+      font-weight: 700;
+      letter-spacing: 0.06em;
+      text-transform: uppercase;
+      padding: 3px 7px;
+      border-radius: 999px;
+      background: rgba(200, 245, 66, 0.15);
+      color: var(--accent);
+      border: 1px solid rgba(200, 245, 66, 0.35);
+    }
+    .mock-banner a { color: var(--accent); text-decoration: none; font-weight: 600; }
+    .mock-banner a:hover { text-decoration: underline; }
+
+    .shell {
+      max-width: 1480px;
+      margin: 0 auto;
+      padding: 12px 16px 32px;
+    }
+
+    /* Compact chrome */
+    .top {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      margin-bottom: 12px;
+      flex-wrap: wrap;
+    }
+    .back {
+      border-radius: 10px;
+      padding: 7px 11px;
+      font-size: 12px;
+    }
+    .crumb {
+      color: var(--muted);
+      font-size: 12px;
+      display: flex;
+      align-items: center;
+      gap: 7px;
+      min-width: 0;
+    }
+    .crumb b {
+      color: var(--text);
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+      max-width: 42ch;
+    }
+    .pills { margin-left: auto; display: flex; gap: 6px; flex-wrap: wrap; }
+    .pill {
+      font-size: 10px;
+      font-weight: 700;
+      letter-spacing: 0.04em;
+      text-transform: uppercase;
+      padding: 4px 8px;
+      border-radius: 999px;
+      border: 1px solid var(--line2);
+      background: var(--bg3);
+    }
+    .pill.done { color: var(--ok); border-color: #2a5a3e; background: #143022; }
+    .pill.sfw { color: #b8d4ff; border-color: #2a3a55; background: #121820; }
+
+    /*
+      9:16 — player column sized by height; inspector fills leftover width.
+      16:9 — stack: head/metrics → wide player → tabs (uses full width under the frame).
+    */
+    .desk {
+      display: grid;
+      grid-template-columns: auto minmax(0, 1fr);
+      gap: 14px;
+      align-items: stretch;
+      min-height: var(--desk-h);
+    }
+
+    /* Landscape: unwrap inspector so we can reorder into a vertical stack */
+    .desk[data-ratio="16-9"] {
+      grid-template-columns: 1fr;
+      min-height: 0;
+      gap: 10px;
+    }
+    .desk[data-ratio="16-9"] .inspector {
+      display: contents;
+      max-height: none;
+    }
+    .desk[data-ratio="16-9"] .head { order: 1; }
+    .desk[data-ratio="16-9"] .metrics { order: 2; }
+    .desk[data-ratio="16-9"] .stage-col {
+      order: 3;
+      width: 100%;
+      max-width: none;
+    }
+    .desk[data-ratio="16-9"] .stage {
+      height: auto;
+      max-height: min(46vh, 560px);
+      aspect-ratio: 16 / 9;
+      width: 100%;
+    }
+    .desk[data-ratio="16-9"] .stage-actions {
+      grid-template-columns: repeat(4, max-content);
+      justify-content: start;
+    }
+    .desk[data-ratio="16-9"] .tabs-shell {
+      order: 4;
+      min-height: min(38vh, 420px);
+      max-height: min(42vh, 480px);
+    }
+    .desk[data-ratio="16-9"] .format-pill::before {
+      content: "16:9 · 1024×576";
+    }
+    .desk[data-ratio="9-16"] .format-pill::before {
+      content: "9:16 · 576×1024";
+    }
+
+    .ratio-switch {
+      display: inline-flex;
+      background: var(--bg);
+      border: 1px solid var(--line);
+      border-radius: 999px;
+      padding: 3px;
+      gap: 2px;
+    }
+    .ratio-switch button {
+      border: none;
+      background: transparent;
+      padding: 5px 10px;
+      font-size: 11px;
+      border-radius: 999px;
+      color: var(--muted);
+    }
+    .ratio-switch button.on {
+      background: var(--accent);
+      color: var(--accent-ink);
+    }
+
+    @media (max-width: 920px) {
+      .desk {
+        grid-template-columns: 1fr;
+        min-height: 0;
+      }
+      .desk[data-ratio="9-16"] .stage {
+        width: min(100%, 360px) !important;
+        height: auto !important;
+        max-height: min(70vh, 640px);
+        aspect-ratio: 9 / 16;
+        margin: 0 auto;
+      }
+      .desk[data-ratio="9-16"] .stage-col {
+        width: 100%;
+        max-width: none;
+      }
+      .inspector { max-height: none; }
+      .panel-scroll { max-height: none; }
+      .desk[data-ratio="16-9"] .tabs-shell {
+        max-height: none;
+        min-height: 280px;
+      }
+    }
+
+    .stage-col {
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+      width: calc(var(--desk-h) * 9 / 16);
+      max-width: min(42vw, 430px);
+    }
+    .stage {
+      position: relative;
+      flex: 1;
+      width: 100%;
+      height: var(--desk-h);
+      max-height: var(--desk-h);
+      border-radius: 18px;
+      overflow: hidden;
+      background: #000;
+      border: 1px solid #222822;
+      box-shadow:
+        0 0 0 1px rgba(255,255,255,0.03) inset,
+        0 20px 60px rgba(0,0,0,0.5);
+    }
+    .stage-fake {
+      width: 100%;
+      height: 100%;
+      display: grid;
+      place-items: center;
+      text-align: center;
+      padding: 20px;
+      background:
+        radial-gradient(ellipse at 50% 35%, #243018 0%, transparent 55%),
+        linear-gradient(180deg, #121610, #080a08);
+      position: relative;
+    }
+    .stage-fake::before {
+      content: "";
+      position: absolute;
+      inset: 0;
+      background: repeating-linear-gradient(
+        0deg, transparent, transparent 3px, rgba(0,0,0,0.08) 3px, rgba(0,0,0,0.08) 4px
+      );
+      opacity: 0.4;
+      pointer-events: none;
+    }
+    .play-orb {
+      width: 64px;
+      height: 64px;
+      border-radius: 50%;
+      display: grid;
+      place-items: center;
+      background: rgba(200, 245, 66, 0.16);
+      border: 1px solid rgba(200, 245, 66, 0.45);
+      color: var(--accent);
+      font-size: 18px;
+      margin: 0 auto 10px;
+      position: relative;
+      z-index: 1;
+    }
+    .stage-fake h2 {
+      margin: 0 0 4px;
+      font-family: var(--display);
+      font-size: 16px;
+      position: relative;
+      z-index: 1;
+    }
+    .stage-fake p {
+      margin: 0;
+      color: var(--muted);
+      font-size: 12px;
+      position: relative;
+      z-index: 1;
+    }
+    .stage-badge {
+      position: absolute;
+      left: 10px;
+      right: 10px;
+      bottom: 10px;
+      z-index: 2;
+      display: flex;
+      gap: 5px;
+      flex-wrap: wrap;
+    }
+    .stage-badge span {
+      font-size: 10px;
+      font-weight: 700;
+      padding: 4px 8px;
+      border-radius: 999px;
+      background: rgba(0,0,0,0.65);
+      border: 1px solid rgba(255,255,255,0.12);
+      backdrop-filter: blur(8px);
+    }
+    .stage-badge .ok { color: var(--ok); }
+
+    .stage-actions {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 6px;
+    }
+    .stage-actions button {
+      border-radius: 11px;
+      width: 100%;
+      justify-content: center;
+    }
+
+    /* Inspector: title strip + metrics + tabs fill remaining height */
+    .inspector {
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+      min-width: 0;
+      max-height: calc(var(--desk-h) + 44px);
+    }
+
+    .head {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) auto;
+      gap: 10px 14px;
+      align-items: start;
+      background: var(--bg2);
+      border: 1px solid var(--line);
+      border-radius: 14px;
+      padding: 12px 14px;
+    }
+    .head h1 {
+      margin: 0 0 4px;
+      font-family: var(--display);
+      font-size: clamp(18px, 1.8vw, 24px);
+      font-weight: 800;
+      letter-spacing: -0.03em;
+      line-height: 1.15;
+    }
+    .head .syn {
+      margin: 0;
+      color: #b6beb2;
+      font-size: 13px;
+      line-height: 1.4;
+      display: -webkit-box;
+      -webkit-line-clamp: 2;
+      -webkit-box-orient: vertical;
+      overflow: hidden;
+    }
+    .head-meta {
+      grid-column: 1 / -1;
+      display: flex;
+      flex-wrap: wrap;
+      gap: 6px 10px;
+      font-size: 11px;
+      color: var(--muted);
+    }
+    .head-meta .ok { color: var(--ok); font-weight: 600; }
+    .head-actions {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 6px;
+      justify-content: flex-end;
+    }
+
+    .metrics {
+      display: grid;
+      grid-template-columns: repeat(4, minmax(0, 1fr));
+      gap: 8px;
+    }
+    @media (max-width: 1100px) {
+      .metrics { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+    }
+    .metric {
+      background: var(--bg2);
+      border: 1px solid var(--line);
+      border-radius: 12px;
+      padding: 10px 11px;
+      min-height: 0;
+    }
+    .metric .label {
+      display: block;
+      font-size: 10px;
+      font-weight: 700;
+      letter-spacing: 0.06em;
+      text-transform: uppercase;
+      color: var(--muted);
+      margin-bottom: 2px;
+    }
+    .metric .value {
+      font-family: var(--display);
+      font-size: 17px;
+      font-weight: 800;
+      letter-spacing: -0.02em;
+      line-height: 1.15;
+    }
+    .metric .hint {
+      display: block;
+      margin-top: 2px;
+      font-size: 11px;
+      color: var(--muted);
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+    .progress {
+      margin-top: 6px;
+      height: 4px;
+      border-radius: 999px;
+      background: #1a2018;
+      overflow: hidden;
+    }
+    .progress > i {
+      display: block;
+      height: 100%;
+      width: 100%;
+      background: linear-gradient(90deg, var(--accent-dim), var(--accent));
+    }
+
+    .tabs-shell {
+      flex: 1;
+      min-height: 0;
+      display: flex;
+      flex-direction: column;
+      border: 1px solid var(--line);
+      border-radius: 14px;
+      background: var(--bg2);
+      overflow: hidden;
+    }
+    .tabs {
+      display: flex;
+      gap: 2px;
+      padding: 5px;
+      background: #0a0c0a;
+      border-bottom: 1px solid var(--line);
+      overflow-x: auto;
+      flex-shrink: 0;
+    }
+    .tab {
+      appearance: none;
+      border: none;
+      background: transparent;
+      border-radius: 10px;
+      padding: 8px 12px;
+      font-size: 12px;
+      font-weight: 700;
+      color: var(--muted);
+      white-space: nowrap;
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+    }
+    .tab:hover {
+      color: var(--text);
+      background: rgba(255,255,255,0.03);
+      border-color: transparent;
+    }
+    .tab[aria-selected="true"] {
+      background: var(--bg4);
+      color: var(--text);
+      box-shadow: inset 0 0 0 1px var(--line2);
+    }
+    .tab .count {
+      font-size: 10px;
+      font-weight: 800;
+      min-width: 18px;
+      height: 18px;
+      padding: 0 5px;
+      border-radius: 999px;
+      display: inline-grid;
+      place-items: center;
+      background: var(--bg3);
+      border: 1px solid var(--line);
+      color: var(--muted);
+    }
+    .tab[aria-selected="true"] .count {
+      background: var(--accent);
+      color: var(--accent-ink);
+      border-color: var(--accent);
+    }
+
+    .panel {
+      display: none;
+      flex: 1;
+      min-height: 0;
+      flex-direction: column;
+      animation: fade .15s ease;
+    }
+    .panel.active { display: flex; }
+    @keyframes fade {
+      from { opacity: 0; }
+      to { opacity: 1; }
+    }
+
+    .panel-toolbar {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 10px;
+      padding: 10px 12px 0;
+      flex-shrink: 0;
+      flex-wrap: wrap;
+    }
+    .panel-toolbar h2 {
+      margin: 0;
+      font-family: var(--display);
+      font-size: 12px;
+      font-weight: 800;
+      letter-spacing: 0.06em;
+      text-transform: uppercase;
+      color: #c5cec0;
+    }
+    .panel-scroll {
+      flex: 1;
+      min-height: 0;
+      overflow: auto;
+      padding: 10px 12px 12px;
+    }
+
+    .timeline-bar {
+      display: flex;
+      gap: 3px;
+      margin-bottom: 10px;
+      padding: 8px;
+      background: var(--bg);
+      border: 1px solid var(--line);
+      border-radius: 10px;
+    }
+    .tick {
+      flex: 1;
+      height: 6px;
+      border-radius: 999px;
+      background: var(--bg4);
+      border: 1px solid var(--line);
+    }
+    .tick.done { background: #2a5a3e; border-color: #3a7a54; }
+
+    .shots { display: flex; flex-direction: column; gap: 6px; }
+    .shot {
+      border: 1px solid var(--line);
+      border-radius: 12px;
+      background: var(--bg);
+      overflow: hidden;
+    }
+    .shot.is-done { border-color: #2a4a34; }
+    .shot.is-open {
+      border-color: rgba(200, 245, 66, 0.35);
+      background: #121612;
+    }
+    .shot-toggle {
+      width: 100%;
+      display: grid;
+      grid-template-columns: 34px minmax(0, 1fr) auto;
+      align-items: center;
+      gap: 10px;
+      text-align: left;
+      border: none;
+      background: transparent;
+      border-radius: 0;
+      padding: 10px 12px;
+    }
+    .shot-toggle:hover { background: rgba(255,255,255,0.02); color: inherit; }
+    .shot-num {
+      width: 32px;
+      height: 32px;
+      border-radius: 9px;
+      display: grid;
+      place-items: center;
+      font-size: 11px;
+      font-weight: 800;
+      background: var(--bg4);
+      border: 1px solid var(--line2);
+    }
+    .shot-num.ok {
+      background: #143022;
+      border-color: #2a5a3e;
+      color: var(--ok);
+    }
+    .shot-sum { min-width: 0; display: flex; flex-direction: column; gap: 2px; }
+    .shot-sum strong {
+      font-size: 12px;
+      display: flex;
+      align-items: center;
+      gap: 7px;
+      flex-wrap: wrap;
+    }
+    .kind {
+      font-size: 9px;
+      font-weight: 800;
+      letter-spacing: 0.04em;
+      text-transform: uppercase;
+      color: var(--accent-ink);
+      background: rgba(200, 245, 66, 0.85);
+      padding: 2px 6px;
+      border-radius: 999px;
+    }
+    .shot-meta { font-size: 11px; color: var(--muted); }
+    .chev { color: var(--muted); font-size: 11px; }
+    .shot-preview {
+      margin: 0;
+      padding: 0 12px 10px 54px;
+      font-size: 11px;
+      line-height: 1.4;
+      color: var(--muted);
+      display: -webkit-box;
+      -webkit-line-clamp: 2;
+      -webkit-box-orient: vertical;
+      overflow: hidden;
+    }
+    .shot-body { padding: 0 12px 12px; display: none; }
+    .shot.is-open .shot-body { display: block; }
+    .shot.is-open .shot-preview { display: none; }
+    .shot-body textarea {
+      width: 100%;
+      min-height: 110px;
+      resize: vertical;
+      background: #0a0c0a;
+      border: 1px solid var(--line);
+      border-radius: 10px;
+      padding: 9px 10px;
+      font-family: var(--mono);
+      font-size: 11px;
+      line-height: 1.45;
+      color: #d6dec8;
+    }
+    .shot-foot {
+      display: flex;
+      justify-content: space-between;
+      gap: 8px;
+      margin-top: 6px;
+      font-size: 10px;
+      color: var(--muted);
+    }
+
+    .two-col {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 12px;
+    }
+    @media (max-width: 1100px) {
+      .two-col { grid-template-columns: 1fr; }
+    }
+
+    .facts { display: grid; gap: 0; }
+    .fact {
+      display: grid;
+      grid-template-columns: 1fr auto;
+      gap: 10px;
+      padding: 7px 0;
+      border-bottom: 1px solid rgba(42, 50, 42, 0.7);
+      font-size: 12px;
+    }
+    .fact:last-child { border-bottom: none; }
+    .fact dt { margin: 0; color: var(--muted); }
+    .fact dd { margin: 0; font-weight: 700; text-align: right; }
+
+    .field { display: flex; flex-direction: column; gap: 5px; margin-bottom: 9px; }
+    .field label {
+      font-size: 10px;
+      font-weight: 700;
+      letter-spacing: 0.05em;
+      text-transform: uppercase;
+      color: var(--muted);
+    }
+    .field select, .field input {
+      background: var(--bg);
+      border: 1px solid var(--line);
+      border-radius: 10px;
+      padding: 8px 10px;
+      font-size: 13px;
+    }
+
+    .format-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 6px;
+    }
+    .format-grid button {
+      border-radius: 10px;
+      padding: 9px 8px;
+      font-size: 12px;
+      text-align: left;
+      line-height: 1.25;
+    }
+    .format-grid button small {
+      display: block;
+      color: var(--muted);
+      font-weight: 500;
+      margin-top: 2px;
+    }
+    .format-grid button.on {
+      border-color: var(--accent-dim);
+      background: rgba(200, 245, 66, 0.1);
+      color: var(--accent);
+    }
+    .format-grid button.on small { color: #b8c88a; }
+
+    .seg {
+      display: inline-flex;
+      background: var(--bg);
+      border: 1px solid var(--line);
+      border-radius: 999px;
+      padding: 3px;
+      gap: 2px;
+      width: 100%;
+      max-width: 260px;
+    }
+    .seg button {
+      flex: 1;
+      border: none;
+      background: transparent;
+      padding: 6px 8px;
+      font-size: 12px;
+      border-radius: 999px;
+      color: var(--muted);
+    }
+    .seg button.on {
+      background: var(--accent);
+      color: var(--accent-ink);
+    }
+
+    .side-actions { display: grid; gap: 6px; }
+    .side-actions button { width: 100%; border-radius: 10px; }
+
+    .log-list { display: flex; flex-direction: column; gap: 6px; font-size: 12px; }
+    .log {
+      padding: 8px 10px;
+      border-radius: 10px;
+      background: var(--bg);
+      border: 1px solid var(--line);
+    }
+    .log time {
+      display: block;
+      color: var(--muted);
+      font-size: 10px;
+      margin-bottom: 2px;
+      font-variant-numeric: tabular-nums;
+    }
+
+    .cctv-preview {
+      aspect-ratio: 9/16;
+      max-height: 240px;
+      margin: 0 auto;
+      border-radius: 12px;
+      background: linear-gradient(160deg, #1a2210, #080a08);
+      border: 1px solid var(--line);
+      position: relative;
+      overflow: hidden;
+    }
+    .cctv-preview .clock {
+      position: absolute;
+      top: 8px;
+      right: 8px;
+      font-family: var(--mono);
+      font-size: 10px;
+      letter-spacing: 0.04em;
+      color: rgba(230, 240, 220, 0.75);
+      text-shadow: 0 1px 2px #000;
+      filter: blur(0.3px);
+      opacity: 0.85;
+    }
+    .cctv-preview::after {
+      content: "";
+      position: absolute;
+      inset: 0;
+      background: repeating-linear-gradient(
+        0deg, transparent, transparent 2px, rgba(0,0,0,.06) 2px, rgba(0,0,0,.06) 3px
+      );
+      pointer-events: none;
+    }
+
+    .note {
+      margin-top: 14px;
+      padding: 11px 13px;
+      border-radius: 11px;
+      border: 1px dashed var(--line2);
+      background: rgba(255,255,255,0.02);
+      font-size: 12px;
+      color: var(--muted);
+      line-height: 1.45;
+    }
+    .note strong { color: var(--text); }
+    .note a { color: var(--accent); }
+  </style>
+</head>
+<body>
+  <div class="mock-banner">
+    <div>
+      <span class="tag">Mock · v2 densificada</span>
+      &nbsp; Alterne 9:16 / 16:9 — o desk muda de “lado a lado” para “player largo + abas embaixo”.
+    </div>
+    <div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap">
+      <div class="ratio-switch" role="group" aria-label="Proporção do mock">
+        <button type="button" class="on" data-ratio="9-16">9:16</button>
+        <button type="button" data-ratio="16-9">16:9</button>
+      </div>
+      <a href="./video-page-redesign.html">← versão rail (v1)</a>
+    </div>
+  </div>
+
+  <div class="shell">
+    <div class="top">
+      <button type="button" class="back" onclick="alert('Só mock')">← Studio</button>
+      <div class="crumb"><span>/</span><b>Relógio na floresta · Strange Footage 03</b></div>
+      <div class="pills">
+        <span class="pill done">Concluído</span>
+        <span class="pill sfw">SFW</span>
+        <span class="pill format-pill"></span>
+      </div>
+    </div>
+
+    <div class="desk" data-ratio="9-16" id="desk">
+      <!-- LEFT: player sized to desk height -->
+      <div class="stage-col">
+        <div class="stage">
+          <div class="stage-fake">
+            <div>
+              <div class="play-orb">▶</div>
+              <h2>Master pronto</h2>
+              <p>Placeholder do player</p>
+            </div>
+          </div>
+          <div class="stage-badge">
+            <span class="ok">Master</span>
+            <span>6 takes · 30s</span>
+            <span>Footage</span>
+          </div>
+        </div>
+        <div class="stage-actions">
+          <button type="button" class="primary">Baixar master</button>
+          <button type="button" data-goto="cctv">CCTV</button>
+        </div>
+      </div>
+
+      <!-- RIGHT: fills leftover width + matches height -->
+      <div class="inspector">
+        <div class="head">
+          <div>
+            <h1>Relógio na floresta · Strange Footage 03</h1>
+            <p class="syn">
+              Câmera de segurança encontra um relógio analógico abandonado no meio da mata.
+              Só vento, insetos e o tique irregular.
+            </p>
+          </div>
+          <div class="head-actions">
+            <button type="button" class="ghost" data-goto="takes">Takes</button>
+            <button type="button" class="ghost">Editar título</button>
+          </div>
+          <div class="head-meta">
+            <span>16 nov 2026, 21:14</span>
+            <span>· strange_footage_03</span>
+            <span class="ok">· Master pronto</span>
+          </div>
+        </div>
+
+        <div class="metrics">
+          <div class="metric">
+            <span class="label">Progresso</span>
+            <div class="value">6 / 6</div>
+            <div class="progress"><i></i></div>
+          </div>
+          <div class="metric">
+            <span class="label">Tempo</span>
+            <div class="value">42 min</div>
+            <span class="hint">est. 38 min</span>
+          </div>
+          <div class="metric">
+            <span class="label">Custo</span>
+            <div class="value">R$ 3,80</div>
+            <span class="hint">0,42 kWh</span>
+          </div>
+          <div class="metric">
+            <span class="label">Formato</span>
+            <div class="value" id="metric-ratio">9:16</div>
+            <span class="hint" id="metric-pixels">576×1024</span>
+          </div>
+        </div>
+
+        <div class="tabs-shell">
+          <div class="tabs" role="tablist" aria-label="Seções do vídeo">
+            <button type="button" class="tab" role="tab" aria-selected="true" data-tab="takes">
+              Takes <span class="count">6</span>
+            </button>
+            <button type="button" class="tab" role="tab" aria-selected="false" data-tab="overview">
+              Visão geral
+            </button>
+            <button type="button" class="tab" role="tab" aria-selected="false" data-tab="production">
+              Produção
+            </button>
+            <button type="button" class="tab" role="tab" aria-selected="false" data-tab="cctv">
+              CCTV
+            </button>
+            <button type="button" class="tab" role="tab" aria-selected="false" data-tab="logs">
+              Logs <span class="count">5</span>
+            </button>
+          </div>
+
+          <!-- TAKES default: use the tall empty column beside vertical video -->
+          <div class="panel active" id="panel-takes" role="tabpanel">
+            <div class="panel-toolbar">
+              <h2>Lista de takes</h2>
+              <span class="muted" style="font-size:11px">6 prontos · scroll nesta coluna</span>
+            </div>
+            <div class="panel-scroll">
+              <div class="timeline-bar">
+                <div class="tick done"></div>
+                <div class="tick done"></div>
+                <div class="tick done"></div>
+                <div class="tick done"></div>
+                <div class="tick done"></div>
+                <div class="tick done"></div>
+              </div>
+              <div class="shots" id="shots"></div>
+            </div>
+          </div>
+
+          <div class="panel" id="panel-overview" role="tabpanel" hidden>
+            <div class="panel-toolbar">
+              <h2>Visão geral</h2>
+              <span class="muted" style="font-size:11px">Detalhes sem sair do player</span>
+            </div>
+            <div class="panel-scroll">
+              <div class="two-col">
+                <div>
+                  <p style="margin:0 0 10px;line-height:1.5;color:#b6beb2;font-size:13px">
+                    Master montado com 6 clips Continuity (sessões A e B). Nenhum áudio humano —
+                    só vento, insetos e o tique irregular.
+                  </p>
+                  <dl class="facts">
+                    <div class="fact"><dt>Slug</dt><dd>strange_footage_03</dd></div>
+                    <div class="fact"><dt>Master</dt><dd style="color:var(--ok)">Pronto</dd></div>
+                    <div class="fact"><dt>Duração</dt><dd>≈ 30s</dd></div>
+                    <div class="fact"><dt>Revisão</dt><dd>Automática</dd></div>
+                    <div class="fact"><dt>Estimativa</dt><dd>38 min · R$ 3,40</dd></div>
+                    <div class="fact"><dt>Realizado</dt><dd>42 min · R$ 3,80</dd></div>
+                  </dl>
+                </div>
+                <div>
+                  <div class="side-actions">
+                    <button type="button" class="primary" data-goto="takes">Voltar aos takes</button>
+                    <button type="button" data-goto="cctv">Abrir CCTV</button>
+                    <button type="button" data-goto="logs">Abrir logs</button>
+                    <button type="button" data-goto="production">Produção</button>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div class="panel" id="panel-production" role="tabpanel" hidden>
+            <div class="panel-toolbar">
+              <h2>Produção</h2>
+              <span class="muted" style="font-size:11px">Formato bloqueado após gerar</span>
+            </div>
+            <div class="panel-scroll">
+              <div class="two-col">
+                <div>
+                  <div class="field">
+                    <label>Categoria</label>
+                    <select>
+                      <option>Geral</option>
+                      <option selected>Footage</option>
+                    </select>
+                  </div>
+                  <div class="field">
+                    <label>Modo de revisão</label>
+                    <div class="seg">
+                      <button type="button" class="on">Auto</button>
+                      <button type="button">Por take</button>
+                    </div>
+                  </div>
+                  <div class="format-grid" style="margin-top:8px">
+                    <button type="button" class="on">Celular<br /><small>9:16 · 576×1024</small></button>
+                    <button type="button" disabled style="opacity:.45">Horizontal<br /><small>16:9</small></button>
+                    <button type="button" disabled style="opacity:.45">Quadrado<br /><small>1:1</small></button>
+                    <button type="button" disabled style="opacity:.45">Feed<br /><small>4:5</small></button>
+                  </div>
+                </div>
+                <div class="side-actions">
+                  <button type="button">Regenerar roteiro</button>
+                  <button type="button">Arquivar</button>
+                  <button type="button" class="danger">Excluir</button>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div class="panel" id="panel-cctv" role="tabpanel" hidden>
+            <div class="panel-toolbar">
+              <h2>Pós · CCTV</h2>
+              <span class="muted" style="font-size:11px">Manual · original preservado</span>
+            </div>
+            <div class="panel-scroll">
+              <div class="two-col">
+                <div>
+                  <div class="field">
+                    <label>Data/hora inicial</label>
+                    <input type="datetime-local" value="2026-11-12T19:08" />
+                  </div>
+                  <div class="field">
+                    <label>Posição</label>
+                    <select>
+                      <option>Superior esquerdo</option>
+                      <option selected>Superior direito</option>
+                      <option>Inferior esquerdo</option>
+                      <option>Inferior direito</option>
+                    </select>
+                  </div>
+                  <div class="field">
+                    <label>Cor</label>
+                    <select>
+                      <option selected>Branco</option>
+                      <option>Verde</option>
+                    </select>
+                  </div>
+                  <button type="button" class="primary" style="width:100%;border-radius:10px">Adicionar data/hora</button>
+                </div>
+                <div>
+                  <div class="cctv-preview"><span class="clock">2026-11-12 19:08:12</span></div>
+                  <p class="muted" style="margin:8px 0 0;font-size:11px;text-align:center">Prévia ilustrativa</p>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div class="panel" id="panel-logs" role="tabpanel" hidden>
+            <div class="panel-toolbar">
+              <h2>Logs deste vídeo</h2>
+              <span class="muted" style="font-size:11px">Horário local</span>
+            </div>
+            <div class="panel-scroll">
+              <div class="log-list">
+                <div class="log"><time>16/11/2026 21:14:02</time>Master montado · 6 clips</div>
+                <div class="log"><time>16/11/2026 21:08:41</time>Take 6 ok · seed 2005</div>
+                <div class="log"><time>16/11/2026 20:55:12</time>Take 5 ok · seed 2004</div>
+                <div class="log"><time>16/11/2026 20:41:03</time>Take 4 ok · seed 2003</div>
+                <div class="log"><time>16/11/2026 20:32:18</time>Fila iniciada · revisão automática</div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="note">
+      <strong>9:16:</strong> player alto à esquerda + abas na coluna sobrando.
+      <strong>16:9:</strong> lado a lado ficaria baixo demais — então vira pilha: título/métricas → player largo → abas em largura total (takes ganham horizontal).
+      v1: <a href="./video-page-redesign.html">video-page-redesign.html</a>
+    </div>
+  </div>
+
+  <script>
+    const TAKES = [
+      { n:1, kind:"NEW", session:"A", duration:5, seed:2000, done:true, prompt:"CONTINUITY LOCK: abandoned analog wall clock hanging crooked on a mossy tree trunk, night forest, cheap CCTV look, soft grain. Camera: fixed wide. ONE action: second hand ticks once. SFX: wind, insects. Mute dialogue." },
+      { n:2, kind:"CONTINUE", session:"A", duration:5, seed:2001, done:true, prompt:"Same lock. Spatial: clock CENTER, trunk LEFT edge. Camera fixed. ONE action: a moth crosses near the lens then exits frame right. SFX: moth flutter, wind." },
+      { n:3, kind:"CONTINUE", session:"A", duration:5, seed:2002, done:true, prompt:"Same lock. ONE action: IR glare blooms briefly on the glass of the clock face then fades. No people. SFX: faint electrical buzz under wind." },
+      { n:4, kind:"NEW", session:"B", duration:5, seed:2003, done:true, prompt:"CONTINUITY LOCK: closer CCTV angle on the clock face, cracked glass, greenish night vision. Camera: fixed medium. ONE action: second hand jumps two ticks unevenly. SFX: dry tick-tick." },
+      { n:5, kind:"CONTINUE", session:"B", duration:5, seed:2004, done:true, prompt:"Same lock. ONE action: fog drifts slowly across LOWER THIRD of frame. Clock stays CENTER. Mute speech. SFX: soft humidity wind." },
+      { n:6, kind:"CONTINUE", session:"B", duration:5, seed:2005, done:true, prompt:"Same lock. ONE action: clock hands stop briefly then resume. Camera static. End hold. SFX: single hard tick, then silence under insects." }
+    ];
+
+    const root = document.getElementById("shots");
+    let openN = 1;
+
+    function renderShots() {
+      root.innerHTML = TAKES.map((tk) => {
+        const open = openN === tk.n;
+        return `
+          <article class="shot ${tk.done ? "is-done" : ""} ${open ? "is-open" : ""}">
+            <button type="button" class="shot-toggle" data-toggle="${tk.n}">
+              <span class="shot-num ${tk.done ? "ok" : ""}">${tk.done ? "✓" : tk.n}</span>
+              <div class="shot-sum">
+                <strong>Take ${tk.n}<span class="kind">${tk.kind}</span></strong>
+                <span class="shot-meta">${tk.session} · ${tk.duration}s · seed ${tk.seed}${tk.done ? " · pronto" : ""}</span>
+              </div>
+              <span class="chev">${open ? "▾" : "▸"}</span>
+            </button>
+            <p class="shot-preview">${tk.prompt}</p>
+            <div class="shot-body">
+              <textarea readonly>${tk.prompt}</textarea>
+              <div class="shot-foot"><span>Prompt Continuity (EN)</span><span>Só leitura neste mock</span></div>
+            </div>
+          </article>`;
+      }).join("");
+    }
+
+    root.addEventListener("click", (e) => {
+      const btn = e.target.closest("[data-toggle]");
+      if (!btn) return;
+      const n = Number(btn.dataset.toggle);
+      openN = openN === n ? null : n;
+      renderShots();
+    });
+
+    function activateTab(id) {
+      document.querySelectorAll(".tab").forEach((tab) => {
+        tab.setAttribute("aria-selected", tab.dataset.tab === id ? "true" : "false");
+      });
+      document.querySelectorAll(".panel").forEach((panel) => {
+        const on = panel.id === `panel-${id}`;
+        panel.classList.toggle("active", on);
+        panel.hidden = !on;
+      });
+    }
+
+    document.querySelectorAll(".tab").forEach((tab) => {
+      tab.addEventListener("click", () => activateTab(tab.dataset.tab));
+    });
+    document.querySelectorAll("[data-goto]").forEach((btn) => {
+      btn.addEventListener("click", () => activateTab(btn.dataset.goto));
+    });
+    document.querySelectorAll(".seg button").forEach((btn) => {
+      btn.addEventListener("click", () => {
+        btn.parentElement.querySelectorAll("button").forEach((b) => b.classList.remove("on"));
+        btn.classList.add("on");
+      });
+    });
+
+    function setRatio(ratio) {
+      const desk = document.getElementById("desk");
+      desk.dataset.ratio = ratio;
+      document.querySelectorAll(".ratio-switch button").forEach((b) => {
+        b.classList.toggle("on", b.dataset.ratio === ratio);
+      });
+      const landscape = ratio === "16-9";
+      document.getElementById("metric-ratio").textContent = landscape ? "16:9" : "9:16";
+      document.getElementById("metric-pixels").textContent = landscape ? "1024×576" : "576×1024";
+      const badge = document.querySelector(".stage-badge");
+      if (badge) {
+        /* keep first ok badge; visual only */
+      }
+    }
+
+    document.querySelectorAll(".ratio-switch button").forEach((btn) => {
+      btn.addEventListener("click", () => setRatio(btn.dataset.ratio));
+    });
+
+    renderShots();
+  </script>
+</body>
+</html>

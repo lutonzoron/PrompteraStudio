@@ -99,3 +99,53 @@ export function isProjectComplete(project) {
   return takes.length > 0 && takes.every((take) => completed.has(Number(take.n))) &&
     !!(project.has_master || project.master_url);
 }
+
+/** Group Continuity takes into scenes: NEW (or session change) starts a block. */
+export function groupTakesBySession(takes = []) {
+  const groups = [];
+  for (const tk of takes) {
+    const session = String(tk?.session || "default");
+    const kind = String(tk?.kind || "").toUpperCase();
+    const last = groups[groups.length - 1];
+    const startNew = !last || kind === "NEW" || last.session !== session;
+    if (startNew) groups.push({ session, items: [tk] });
+    else last.items.push(tk);
+  }
+  return groups;
+}
+
+/**
+ * Pull the readable beat from a Continuity prompt so the shot list
+ * does not dump the repeated CONTINUITY LOCK on every row.
+ */
+export function summarizeTakePrompt(prompt) {
+  const raw = String(prompt || "");
+  const flat = raw.replace(/\s+/g, " ").trim();
+  if (!flat) return { action: "", dialogue: "", mute: false, preview: "" };
+
+  let action = "";
+  const actionRe = /ONE action(?:\s+only)?\s*:\s*([^<\n]+)/gi;
+  let match;
+  while ((match = actionRe.exec(raw)) !== null) {
+    const candidate = match[1].replace(/\s+/g, " ").trim();
+    if (!candidate || /^same (?:lock|puppets|camera)/i.test(candidate)) continue;
+    action = candidate;
+  }
+  action = action
+    .replace(/\s*(?:Sound only:|Then clear lip sync|Soft diegetic|No music|No other speech|No speech).*$/i, "")
+    .replace(/\.\s*$/, "")
+    .trim();
+
+  const dialogueMatch = raw.match(/<d>\s*\[Portuguese\]\s*([\s\S]*?)<\/d>/i);
+  const dialogue = dialogueMatch ? dialogueMatch[1].replace(/\s+/g, " ").trim() : "";
+
+  const mute =
+    !dialogue &&
+    /AUDIO LOCK:\s*MUTE|MUTE of dialogue|MUTE\b.*\bNo (?:words|dialogue|speech)|All mouths sealed/i.test(raw);
+
+  let preview = action;
+  if (dialogue) preview = preview ? `${preview} · “${dialogue}”` : `“${dialogue}”`;
+  if (!preview) preview = flat.slice(0, 140);
+
+  return { action, dialogue, mute, preview };
+}

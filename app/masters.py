@@ -205,6 +205,53 @@ def collect_take_clips(project: dict[str, Any]) -> list[Path]:
     return [indexed[n] for n in sorted(indexed.keys())]
 
 
+def index_take_files(project: dict[str, Any]) -> dict[int, Path]:
+    """Public wrapper: best MP4 path per take number."""
+    return _index_take_files(project)
+
+
+def project_takes_editor_info(project: dict[str, Any], project_id: str | None = None) -> list[dict[str, Any]]:
+    """Per-take media + cascade metadata for the in-video take editor."""
+    from .continuity.cascade import cascade_ns
+
+    takes = list(project.get("takes") or [])
+    state = project.get("runner_state")
+    if state is None and project_id:
+        state = db.get_runner_state(project_id)
+    completed = {int(x) for x in ((state or {}).get("completed") or [])}
+    indexed = _index_take_files(project)
+    pid = project_id or project.get("id")
+    rows: list[dict[str, Any]] = []
+    for take in sorted(takes, key=lambda t: int(t.get("n") or 0)):
+        n = int(take.get("n") or 0)
+        if not n:
+            continue
+        path = indexed.get(n)
+        try:
+            cascade = cascade_ns(takes, n)
+        except ValueError:
+            cascade = [n]
+        clip_url = None
+        if path and path.is_file():
+            # Dedicated project clip route avoids exposing raw filesystem paths in the UI.
+            clip_url = f"/api/projects/{pid}/takes/{n}/clip" if pid else None
+        rows.append({
+            "n": n,
+            "kind": take.get("kind"),
+            "session": take.get("session"),
+            "duration": take.get("duration"),
+            "title": take.get("title"),
+            "seed": take.get("seed"),
+            "prefix": take.get("prefix"),
+            "prompt": take.get("prompt"),
+            "completed": n in completed,
+            "has_clip": bool(path and path.is_file()),
+            "clip_url": clip_url,
+            "cascade_ns": cascade,
+        })
+    return rows
+
+
 def pick_continuity_session_finals(project: dict[str, Any]) -> list[Path]:
     """Last Full export per Continuity session, in first-seen session order."""
     takes = project.get("takes") or []

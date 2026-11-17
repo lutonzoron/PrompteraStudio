@@ -12,7 +12,7 @@ from threading import Event
 
 from app import db
 from app.categories import infer_category, default_footage_time
-from app.footage import clock_subtitles, export_timestamp
+from app.footage import clock_subtitles, cctv_status, export_timestamp, remove_timestamp
 
 
 class FootageTests(unittest.TestCase):
@@ -31,6 +31,7 @@ class FootageTests(unittest.TestCase):
     def test_category_inference_is_scoped_to_footage(self):
         self.assertEqual(infer_category('strange_footages_01_sombra_sem_dono'), 'footage')
         self.assertEqual(infer_category('lorena_pterodactilo_silhueta_horizontal_12s_v3'), 'footage')
+        self.assertEqual(infer_category('desastres_naturais_quatro_cameras_vertical_40s'), 'footage')
         self.assertEqual(infer_category('chapeuzinho_intro_mae_cena_unica_v2'), 'general')
         self.assertEqual(infer_category('a_historia_de_lorena'), 'general')
 
@@ -121,3 +122,26 @@ class FootageTests(unittest.TestCase):
         self.assertAlmostEqual(float(info['format']['duration']), 2, delta=.15)
         self.assertTrue(any(s['codec_type']=='audio' for s in info['streams']))
         self.assertTrue(any(s.get('width')==320 and s.get('height')==180 for s in info['streams']))
+
+    @unittest.skipUnless(shutil.which('ffmpeg') and shutil.which('ffprobe'), 'FFmpeg required')
+    def test_apply_promotes_cctv_master_and_remove_restores_original(self):
+        source = self.root/'master.mp4'
+        subprocess.run(['ffmpeg','-v','error','-f','lavfi','-i','color=c=navy:s=320x180:r=24:d=1',
+                        '-f','lavfi','-i','anullsrc=r=16000:cl=mono','-t','1','-c:v','libx264',
+                        '-threads','2','-pix_fmt','yuv420p','-c:a','aac',str(source)], check=True, capture_output=True)
+        original_hash = hashlib.sha256(source.read_bytes()).hexdigest()
+        p = db.create_project({'title':'Footage restore', 'category':'footage', 'slug':'clock_restore',
+                               'cctv_timestamp_start':'2026-11-01T21:37:49', 'stats':{'master':str(source)}})
+        stamped = export_timestamp(p['id'])
+        after = db.get_project(p['id'])
+        self.assertTrue(cctv_status(after)['cctv_active'])
+        self.assertEqual(Path(after['stats']['master']).resolve(), Path(stamped['path']).resolve())
+        self.assertEqual(Path(after['stats']['original_master']).resolve(), source.resolve())
+        self.assertEqual(hashlib.sha256(source.read_bytes()).hexdigest(), original_hash)
+
+        restored = remove_timestamp(p['id'])
+        final = db.get_project(p['id'])
+        self.assertFalse(restored['cctv_active'])
+        self.assertFalse(cctv_status(final)['cctv_active'])
+        self.assertEqual(Path(final['stats']['master']).resolve(), source.resolve())
+        self.assertEqual(hashlib.sha256(source.read_bytes()).hexdigest(), original_hash)

@@ -1,0 +1,977 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Promptera · Mock · Studio (repaginação)</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=DM+Sans:ital,opsz,wght@0,9..40,400;0,9..40,500;0,9..40,600;0,9..40,700;1,9..40,400&family=Plus+Jakarta+Sans:wght@600;700;800&display=swap" rel="stylesheet" />
+  <style>
+    :root {
+      --bg: #070807;
+      --bg2: #0e100e;
+      --bg3: #151815;
+      --bg4: #1c211c;
+      --line: #2a322a;
+      --line2: #3a453a;
+      --text: #f2f5ef;
+      --muted: #8b9688;
+      --accent: #c8f542;
+      --accent-dim: #9bc41f;
+      --accent-ink: #0c1200;
+      --warn: #f0c14a;
+      --danger: #ff6b6b;
+      --ok: #7ddea0;
+      --radius: 16px;
+      --font: "DM Sans", system-ui, sans-serif;
+      --display: "Plus Jakarta Sans", "DM Sans", system-ui, sans-serif;
+      --shadow: 0 24px 80px rgba(0, 0, 0, 0.55);
+    }
+
+    * { box-sizing: border-box; }
+    html, body { margin: 0; min-height: 100%; }
+    body {
+      font-family: var(--font);
+      color: var(--text);
+      background:
+        radial-gradient(900px 480px at 80% -8%, #1a2a0a 0%, transparent 55%),
+        radial-gradient(640px 360px at 0% 100%, #122018 0%, transparent 50%),
+        var(--bg);
+      -webkit-font-smoothing: antialiased;
+    }
+
+    button, select, input { font: inherit; color: inherit; }
+    button {
+      cursor: pointer;
+      border: 1px solid var(--line);
+      background: var(--bg4);
+      border-radius: 999px;
+      padding: 9px 14px;
+      font-size: 13px;
+      font-weight: 600;
+    }
+    button:hover { border-color: var(--accent-dim); color: var(--accent); }
+    button.primary {
+      background: var(--accent);
+      border-color: var(--accent);
+      color: var(--accent-ink);
+    }
+    button.primary:hover { filter: brightness(1.05); color: var(--accent-ink); }
+    button.ghost { background: transparent; }
+    .muted { color: var(--muted); }
+
+    .mock-banner {
+      position: sticky;
+      top: 0;
+      z-index: 50;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      flex-wrap: wrap;
+      padding: 10px 18px;
+      background: linear-gradient(90deg, #1a240c, #121812);
+      border-bottom: 1px solid rgba(200, 245, 66, 0.25);
+      font-size: 13px;
+    }
+    .mock-banner strong { color: var(--accent); }
+    .mock-banner .tag {
+      font-size: 11px;
+      font-weight: 700;
+      letter-spacing: 0.06em;
+      text-transform: uppercase;
+      padding: 4px 8px;
+      border-radius: 999px;
+      background: rgba(200, 245, 66, 0.15);
+      color: var(--accent);
+      border: 1px solid rgba(200, 245, 66, 0.35);
+    }
+
+    .shell { max-width: 1280px; margin: 0 auto; padding: 16px 20px 64px; }
+
+    /* Topbar (simplified shell) */
+    .topbar {
+      display: flex;
+      align-items: center;
+      gap: 14px;
+      margin-bottom: 22px;
+      flex-wrap: wrap;
+    }
+    .brand {
+      background: transparent;
+      border: none;
+      padding: 2px 8px 2px 0;
+      display: inline-flex;
+      align-items: center;
+      border-radius: 10px;
+      flex-shrink: 0;
+    }
+    .brand:hover { border-color: transparent; color: inherit; }
+    .brand-logo {
+      display: inline-flex;
+      align-items: center;
+      line-height: 1;
+    }
+    .brand-full-img {
+      display: block;
+      height: 52px;
+      width: auto;
+      max-width: min(280px, 42vw);
+      object-fit: contain;
+      object-position: left center;
+    }
+    .top-nav { display: flex; gap: 4px; flex-wrap: wrap; align-items: center; }
+    .top-nav button {
+      background: transparent;
+      border-color: transparent;
+      color: var(--muted);
+      padding: 8px 12px;
+      display: inline-flex;
+      align-items: center;
+      gap: 0;
+    }
+    .top-nav button.active {
+      color: var(--text);
+      background: var(--bg3);
+      border-color: transparent;
+    }
+    .badge {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      min-width: 18px;
+      height: 18px;
+      padding: 0 5px;
+      border-radius: 999px;
+      background: var(--accent);
+      color: var(--accent-ink);
+      font-size: 11px;
+      font-weight: 800;
+      margin-left: 4px;
+      line-height: 1;
+    }
+    .badge.warn { background: var(--danger); color: #fff; }
+    .top-actions { margin-left: auto; display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+    .dot-row { display: flex; gap: 10px; font-size: 12px; color: var(--muted); }
+    .dot {
+      display: inline-block;
+      width: 8px; height: 8px;
+      border-radius: 50%;
+      margin-right: 4px;
+      vertical-align: middle;
+    }
+    .dot.on { background: var(--ok); box-shadow: 0 0 8px rgba(125,222,160,.5); }
+    .dot.off { background: var(--danger); }
+
+    /* Page head */
+    .page-head {
+      display: flex;
+      justify-content: space-between;
+      align-items: flex-end;
+      gap: 16px;
+      margin-bottom: 18px;
+      flex-wrap: wrap;
+    }
+    .page-head h1 {
+      font-family: var(--display);
+      font-size: clamp(28px, 4vw, 36px);
+      font-weight: 800;
+      letter-spacing: -0.03em;
+      margin: 0 0 6px;
+    }
+    .page-head p { margin: 0; color: var(--muted); font-size: 14px; }
+    .stat-row { display: flex; gap: 8px; flex-wrap: wrap; }
+    .stat-chip {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      padding: 8px 12px;
+      border-radius: 12px;
+      border: 1px solid var(--line);
+      background: rgba(14, 16, 14, 0.75);
+      font-size: 12px;
+      font-weight: 600;
+      color: var(--muted);
+    }
+    .stat-chip b { color: var(--text); font-size: 14px; }
+    .stat-chip.warn { border-color: rgba(240,193,74,.35); color: var(--warn); }
+    .stat-chip.warn b { color: var(--warn); }
+    .stat-chip.ok { border-color: rgba(125,222,160,.3); }
+
+    /* Attention rail */
+    .attention {
+      margin-bottom: 22px;
+      padding: 14px;
+      border-radius: 18px;
+      border: 1px solid rgba(240, 193, 74, 0.28);
+      background:
+        linear-gradient(135deg, rgba(240,193,74,.08), transparent 55%),
+        var(--bg2);
+    }
+    .attention-head {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 10px;
+      margin-bottom: 12px;
+    }
+    .attention-head h2 {
+      margin: 0;
+      font-size: 13px;
+      font-weight: 800;
+      letter-spacing: 0.06em;
+      text-transform: uppercase;
+      color: var(--warn);
+    }
+    .rail {
+      display: grid;
+      grid-auto-flow: column;
+      grid-auto-columns: minmax(220px, 280px);
+      gap: 10px;
+      overflow-x: auto;
+      padding-bottom: 4px;
+      scroll-snap-type: x mandatory;
+    }
+    .rail-card {
+      scroll-snap-align: start;
+      display: grid;
+      grid-template-columns: 56px 1fr auto;
+      gap: 10px;
+      align-items: center;
+      padding: 10px;
+      border-radius: 14px;
+      border: 1px solid var(--line);
+      background: var(--bg3);
+      text-align: left;
+      min-height: 72px;
+    }
+    .rail-card:hover { border-color: var(--accent-dim); }
+    .rail-thumb {
+      width: 56px;
+      height: 56px;
+      border-radius: 10px;
+      object-fit: cover;
+      background: linear-gradient(160deg, #2a3a18, #101410);
+    }
+    .rail-card strong {
+      display: block;
+      font-size: 13px;
+      margin-bottom: 2px;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      max-width: 140px;
+    }
+    .rail-card .why { font-size: 11px; color: var(--muted); }
+    .rail-card .cta {
+      font-size: 11px;
+      padding: 7px 10px;
+      white-space: nowrap;
+      border-radius: 999px;
+      border: 1px solid var(--line);
+      background: var(--bg4);
+      color: var(--text);
+    }
+    .rail-card .cta.primary {
+      background: var(--accent);
+      border-color: var(--accent);
+      color: var(--accent-ink);
+      font-weight: 700;
+    }
+
+    /* Continue strip */
+    .section-label {
+      display: flex;
+      align-items: baseline;
+      justify-content: space-between;
+      gap: 12px;
+      margin: 8px 0 12px;
+    }
+    .section-label h2 {
+      margin: 0;
+      font-family: var(--display);
+      font-size: 16px;
+      font-weight: 700;
+    }
+
+    /* Toolbar */
+    .toolbar {
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+      margin-bottom: 16px;
+      padding: 12px;
+      border: 1px solid var(--line);
+      border-radius: 16px;
+      background: rgba(14, 16, 14, 0.65);
+    }
+    .toolbar-row {
+      display: flex;
+      gap: 10px;
+      align-items: center;
+      flex-wrap: wrap;
+    }
+    .toolbar-row.controls {
+      padding-top: 2px;
+    }
+    .search {
+      flex: 1;
+      min-width: 180px;
+      max-width: 320px;
+      position: relative;
+    }
+    .search input {
+      width: 100%;
+      border-radius: 999px;
+      border: 1px solid var(--line2);
+      background: var(--bg);
+      padding: 10px 14px 10px 36px;
+      outline: none;
+    }
+    .search input:focus { border-color: var(--accent-dim); }
+    .search::before {
+      content: "⌕";
+      position: absolute;
+      left: 14px;
+      top: 50%;
+      transform: translateY(-50%);
+      color: var(--muted);
+      font-size: 14px;
+    }
+    .seg {
+      display: inline-flex;
+      gap: 3px;
+      padding: 3px;
+      border-radius: 999px;
+      background: var(--bg);
+      border: 1px solid var(--line);
+      flex-wrap: wrap;
+    }
+    .seg button {
+      border: none;
+      background: transparent;
+      color: var(--muted);
+      padding: 8px 12px;
+    }
+    .seg button.on {
+      background: var(--accent);
+      color: var(--accent-ink);
+    }
+    .seg button em {
+      font-style: normal;
+      font-size: 10px;
+      font-weight: 800;
+      margin-left: 4px;
+      opacity: 0.75;
+    }
+    .toolbar-aside {
+      margin-left: auto;
+      display: flex;
+      gap: 8px;
+      align-items: center;
+      flex-wrap: wrap;
+    }
+    .density {
+      display: inline-flex;
+      gap: 2px;
+      padding: 3px;
+      border-radius: 999px;
+      border: 1px solid var(--line);
+      background: var(--bg);
+    }
+    .density button {
+      border: none;
+      background: transparent;
+      color: var(--muted);
+      padding: 7px 10px;
+      font-size: 12px;
+    }
+    .density button.on {
+      background: var(--bg4);
+      color: var(--text);
+      border: 1px solid var(--line2);
+    }
+    .more-panel {
+      display: none;
+      gap: 8px;
+      flex-wrap: wrap;
+      padding-top: 4px;
+      border-top: 1px dashed var(--line);
+    }
+    .more-panel.open { display: flex; }
+    .chip {
+      border-radius: 999px;
+      padding: 7px 12px;
+      font-size: 12px;
+      color: var(--muted);
+      background: var(--bg);
+    }
+    .chip.active {
+      color: var(--accent-ink);
+      background: var(--accent);
+      border-color: var(--accent);
+    }
+
+    /* Library grid — shell uniforme; formato real no letterbox interno */
+    .library-grid {
+      display: grid;
+      gap: 14px;
+      align-items: stretch;
+    }
+    body[data-density="comfortable"] .library-grid {
+      grid-template-columns: repeat(auto-fill, minmax(190px, 1fr));
+    }
+    body[data-density="compact"] .library-grid {
+      grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+      gap: 10px;
+    }
+    body[data-density="cinema"] .library-grid {
+      grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
+      gap: 18px;
+    }
+
+    .proj-card {
+      position: relative;
+      display: flex;
+      flex-direction: column;
+      border-radius: var(--radius);
+      overflow: hidden;
+      border: 1px solid var(--line);
+      background: var(--bg2);
+      cursor: pointer;
+      color: inherit;
+      font: inherit;
+      transition: transform .15s, border-color .15s;
+      animation: fadeUp .35s ease both;
+      min-height: 0;
+    }
+    .proj-card:hover {
+      border-color: var(--accent-dim);
+      transform: translateY(-2px);
+    }
+
+    /* Palco: altura fixa da capa; poster no aspect ratio real com letterbox */
+    .stage {
+      position: relative;
+      aspect-ratio: 3 / 4;
+      background:
+        repeating-linear-gradient(
+          -45deg,
+          transparent,
+          transparent 6px,
+          rgba(255,255,255,.015) 6px,
+          rgba(255,255,255,.015) 12px
+        ),
+        #0a0c0a;
+      display: grid;
+      place-items: center;
+      overflow: hidden;
+    }
+    .poster {
+      position: relative;
+      max-width: 100%;
+      max-height: 100%;
+      border-radius: 4px;
+      overflow: hidden;
+      box-shadow: 0 8px 28px rgba(0,0,0,.45);
+    }
+    .poster.ratio-9x16 { aspect-ratio: 9 / 16; width: auto; height: 92%; }
+    .poster.ratio-16x9 { aspect-ratio: 16 / 9; width: 92%; height: auto; }
+    .poster.ratio-1x1 { aspect-ratio: 1 / 1; width: 78%; height: auto; }
+    .poster.ratio-4x5 { aspect-ratio: 4 / 5; height: 88%; width: auto; }
+    .poster .thumb {
+      position: absolute;
+      inset: 0;
+      background-size: cover;
+      background-position: center;
+    }
+    .poster .scrim {
+      position: absolute;
+      inset: 0;
+      background: linear-gradient(to top, rgba(0,0,0,.55) 0%, transparent 45%);
+      pointer-events: none;
+    }
+
+    .top-badges {
+      position: absolute;
+      top: 10px; left: 10px; right: 10px;
+      display: flex;
+      justify-content: space-between;
+      gap: 6px;
+      z-index: 2;
+      pointer-events: none;
+    }
+    .status-pill {
+      font-size: 10px;
+      font-weight: 800;
+      letter-spacing: 0.04em;
+      text-transform: uppercase;
+      padding: 4px 8px;
+      border-radius: 999px;
+      background: rgba(0,0,0,.6);
+      border: 1px solid rgba(255,255,255,.12);
+      backdrop-filter: blur(6px);
+    }
+    .status-pill.generating { color: var(--accent); border-color: rgba(200,245,66,.35); }
+    .status-pill.awaiting_review { color: var(--warn); border-color: rgba(240,193,74,.4); }
+    .status-pill.done { color: var(--ok); }
+    .status-pill.draft { color: #c5d0c2; }
+    .status-pill.failed { color: var(--danger); border-color: rgba(255,107,107,.35); }
+    .status-pill.queued { color: #9ec8ff; }
+    .status-pill.nsfw {
+      color: #ffb4b4;
+      border-color: rgba(255,107,107,.4);
+      background: rgba(60,16,16,.65);
+    }
+    .format-pill {
+      font-size: 10px;
+      font-weight: 700;
+      padding: 4px 7px;
+      border-radius: 8px;
+      background: rgba(0,0,0,.55);
+      color: #c8d2c4;
+      border: 1px solid rgba(255,255,255,.1);
+    }
+
+    .meta {
+      padding: 12px;
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+      background: var(--bg3);
+      border-top: 1px solid var(--line);
+      flex: 1;
+    }
+    .meta strong {
+      font-size: 13px;
+      font-weight: 650;
+      line-height: 1.25;
+      display: -webkit-box;
+      -webkit-line-clamp: 2;
+      -webkit-box-orient: vertical;
+      overflow: hidden;
+    }
+    .meta .sub {
+      font-size: 11px;
+      color: var(--muted);
+      display: flex;
+      gap: 6px;
+      flex-wrap: wrap;
+    }
+    .progress {
+      height: 3px;
+      border-radius: 999px;
+      background: rgba(255,255,255,.1);
+      overflow: hidden;
+      margin-top: auto;
+    }
+    .progress i {
+      display: block;
+      height: 100%;
+      background: linear-gradient(90deg, var(--accent-dim), var(--accent));
+      border-radius: inherit;
+    }
+
+    /* Hover quick actions — só com ponteiro real */
+    .quick {
+      position: absolute;
+      left: 10px; right: 10px;
+      bottom: 10px;
+      display: none;
+      gap: 6px;
+      z-index: 3;
+    }
+    @media (hover: hover) {
+      .proj-card:hover .quick { display: flex; }
+    }
+    body[data-density="compact"] .quick { display: none !important; }
+    .quick button {
+      flex: 1;
+      padding: 8px;
+      font-size: 11px;
+      border-radius: 10px;
+      background: rgba(12, 16, 10, 0.92);
+      backdrop-filter: blur(8px);
+    }
+    .quick button.primary { flex: 1.2; }
+
+    .hint-footer {
+      margin-top: 28px;
+      padding: 16px 18px;
+      border-radius: 14px;
+      border: 1px dashed var(--line2);
+      background: rgba(20, 24, 16, 0.35);
+      font-size: 13px;
+      color: var(--muted);
+      line-height: 1.55;
+    }
+    .hint-footer strong { color: var(--text); }
+    .hint-footer ol { margin: 8px 0 0; padding-left: 18px; }
+    .hint-footer li { margin: 4px 0; }
+
+    @keyframes fadeUp {
+      from { opacity: 0; transform: translateY(10px); }
+      to { opacity: 1; transform: none; }
+    }
+
+    @media (max-width: 720px) {
+      .toolbar-aside { margin-left: 0; width: 100%; }
+      .search { max-width: none; }
+      .quick { display: none; }
+    }
+  </style>
+</head>
+<body data-density="comfortable">
+  <div class="mock-banner">
+    <div>
+      <span class="tag">Mock</span>
+      &nbsp; Proposta visual da tela <strong>Studio</strong> — não altera a app.
+      Abra o arquivo no browser.
+    </div>
+    <span class="muted">Arquivo: mocks/studio-redesign.html</span>
+  </div>
+
+  <div class="shell">
+    <header class="topbar">
+      <button type="button" class="brand" aria-label="Promptera Studio">
+        <span class="brand-logo">
+          <img class="brand-full-img" src="logo-promptera.png" alt="Promptera Studio" draggable="false" />
+        </span>
+      </button>
+      <nav class="top-nav">
+        <button type="button" class="active">Studio</button>
+        <button type="button">Fila <span class="badge">3</span></button>
+        <button type="button">Estilos</button>
+        <button type="button">Inbox <span class="badge warn">1</span></button>
+        <button type="button">Logs</button>
+        <button type="button">Ajustes</button>
+      </nav>
+      <div class="top-actions">
+        <div class="dot-row">
+          <span><i class="dot on"></i>Comfy</span>
+          <span><i class="dot on"></i>AI</span>
+        </div>
+        <button type="button" class="primary">Nova história</button>
+      </div>
+    </header>
+
+    <div class="page-head">
+      <div>
+        <h1>Studio</h1>
+        <p>12 histórias · Continuity H3 local — o que precisa de você vem primeiro</p>
+      </div>
+      <div class="stat-row">
+        <div class="stat-chip warn"><b>2</b> revisão</div>
+        <div class="stat-chip"><b>1</b> gerando</div>
+        <div class="stat-chip ok"><b>5</b> prontas</div>
+        <div class="stat-chip"><b>4</b> rascunhos</div>
+      </div>
+    </div>
+
+    <!-- 1) Attention rail -->
+    <section class="attention" aria-label="Precisa de atenção">
+      <div class="attention-head">
+        <h2>Precisa de você</h2>
+        <button type="button" class="ghost" style="padding:6px 10px;font-size:12px">Ver fila →</button>
+      </div>
+      <div class="rail">
+        <button type="button" class="rail-card">
+          <div class="rail-thumb" style="background:linear-gradient(135deg,#3a2010,#1a1208)"></div>
+          <div>
+            <strong>Noite no Mercado</strong>
+            <div class="why">Aguardando revisão · take 3/6</div>
+          </div>
+          <span class="cta primary">Revisar</span>
+        </button>
+        <button type="button" class="rail-card">
+          <div class="rail-thumb" style="background:linear-gradient(135deg,#203018,#0e140c)"></div>
+          <div>
+            <strong>Café com Chuva</strong>
+            <div class="why">Aguardando revisão · take 1/4</div>
+          </div>
+          <span class="cta primary">Revisar</span>
+        </button>
+        <button type="button" class="rail-card">
+          <div class="rail-thumb" style="background:linear-gradient(135deg,#182030,#0a1018)"></div>
+          <div>
+            <strong>Ruínas do Farol</strong>
+            <div class="why">Gerando · 62% · ~4 min</div>
+          </div>
+          <span class="cta">Abrir</span>
+        </button>
+      </div>
+    </section>
+
+    <!-- 2) Toolbar (sem Geral/Footage) -->
+    <div class="toolbar">
+      <div class="toolbar-row">
+        <div class="search">
+          <input type="search" placeholder="Buscar título, slug ou brief…" />
+        </div>
+        <div class="seg" role="tablist" aria-label="Status">
+          <button type="button" class="on" data-filter="all">Todas<em>12</em></button>
+          <button type="button" data-filter="active">Ativas<em>3</em></button>
+          <button type="button" data-filter="draft">Rascunhos<em>4</em></button>
+          <button type="button" data-filter="done">Prontas<em>5</em></button>
+        </div>
+        <div class="toolbar-aside">
+          <div class="density" role="group" aria-label="Densidade">
+            <button type="button" data-density="compact" title="Compacto">▣</button>
+            <button type="button" class="on" data-density="comfortable" title="Confortável">▦</button>
+            <button type="button" data-density="cinema" title="Cinema">▥</button>
+          </div>
+          <label class="muted" style="font-size:12px;font-weight:600;display:inline-flex;gap:6px;align-items:center">
+            Ordenar
+            <select style="border-radius:999px;border:1px solid var(--line2);background:var(--bg4);padding:8px 12px;font-weight:600">
+              <option>Mais recentes</option>
+              <option>Por status</option>
+              <option>Mais avançados</option>
+              <option>Título A–Z</option>
+            </select>
+          </label>
+          <button type="button" class="ghost" id="moreToggle" aria-expanded="false">Mais filtros</button>
+        </div>
+      </div>
+      <div class="more-panel" id="morePanel">
+        <button type="button" class="chip">Na fila</button>
+        <button type="button" class="chip">Falhas</button>
+        <button type="button" class="chip">NSFW</button>
+        <button type="button" class="chip">SFW</button>
+        <button type="button" class="chip">Arquivadas</button>
+        <button type="button" class="chip">Só com master</button>
+        <button type="button" class="chip">9:16</button>
+        <button type="button" class="chip">16:9</button>
+      </div>
+    </div>
+
+    <!-- 3) Grid -->
+    <div class="section-label">
+      <h2>Biblioteca</h2>
+      <span class="muted" style="font-size:12px">Shell uniforme · poster no ratio real (letterbox) · ações no hover</span>
+    </div>
+
+    <div class="library-grid" id="grid">
+      <article class="proj-card" tabindex="0">
+        <div class="stage">
+          <div class="top-badges">
+            <span class="status-pill awaiting_review">Revisão</span>
+            <span class="format-pill">9:16</span>
+          </div>
+          <div class="poster ratio-9x16">
+            <div class="thumb" style="background:linear-gradient(160deg,#6a9a30,#1a2a10 55%), radial-gradient(circle at 30% 20%,#c8f54255,transparent 50%)"></div>
+            <div class="scrim"></div>
+            <div class="quick">
+              <button type="button" class="primary">Revisar</button>
+              <button type="button">⋯</button>
+            </div>
+          </div>
+        </div>
+        <div class="meta">
+          <strong>Noite no Mercado</strong>
+          <div class="sub"><span>3/6 takes</span><span>·</span><span>há 12 min</span></div>
+          <div class="progress"><i style="width:50%"></i></div>
+        </div>
+      </article>
+
+      <article class="proj-card" tabindex="0">
+        <div class="stage">
+          <div class="top-badges">
+            <span class="status-pill generating">Gerando</span>
+            <span class="format-pill">16:9</span>
+          </div>
+          <div class="poster ratio-16x9">
+            <div class="thumb" style="background:linear-gradient(120deg,#3a7aaa,#102030 60%), radial-gradient(circle at 70% 40%,#6ab0e0aa,transparent 45%)"></div>
+            <div class="scrim"></div>
+            <div class="quick">
+              <button type="button">Abrir</button>
+              <button type="button">⋯</button>
+            </div>
+          </div>
+        </div>
+        <div class="meta">
+          <strong>Ruínas do Farol</strong>
+          <div class="sub"><span>5/8 takes</span><span>·</span><span>~4 min</span></div>
+          <div class="progress"><i style="width:62%"></i></div>
+        </div>
+      </article>
+
+      <article class="proj-card" tabindex="0">
+        <div class="stage">
+          <div class="top-badges">
+            <span class="status-pill draft">Rascunho</span>
+            <span class="format-pill">4:5</span>
+          </div>
+          <div class="poster ratio-4x5">
+            <div class="thumb" style="background:linear-gradient(160deg,#c48a40,#3a2010)"></div>
+            <div class="scrim"></div>
+            <div class="quick">
+              <button type="button" class="primary">Enfileirar</button>
+              <button type="button">⋯</button>
+            </div>
+          </div>
+        </div>
+        <div class="meta">
+          <strong>Café com Chuva</strong>
+          <div class="sub"><span>0/4 takes</span><span>·</span><span>ontem</span></div>
+          <div class="progress"><i style="width:0%"></i></div>
+        </div>
+      </article>
+
+      <article class="proj-card" tabindex="0">
+        <div class="stage">
+          <div class="top-badges">
+            <span class="status-pill done">Pronta</span>
+            <span class="format-pill">1:1</span>
+          </div>
+          <div class="poster ratio-1x1">
+            <div class="thumb" style="background:linear-gradient(145deg,#8a4aaa,#281830)"></div>
+            <div class="scrim"></div>
+            <div class="quick">
+              <button type="button" class="primary">Master</button>
+              <button type="button">⋯</button>
+            </div>
+          </div>
+        </div>
+        <div class="meta">
+          <strong>Loop do Relógio</strong>
+          <div class="sub"><span>4/4 · master</span><span>·</span><span>R$ 12,40</span></div>
+          <div class="progress"><i style="width:100%"></i></div>
+        </div>
+      </article>
+
+      <article class="proj-card" tabindex="0">
+        <div class="stage">
+          <div class="top-badges">
+            <span class="status-pill failed">Falha</span>
+            <span class="status-pill nsfw">NSFW</span>
+          </div>
+          <div class="poster ratio-9x16">
+            <div class="thumb" style="background:linear-gradient(160deg,#a03050,#2a1018)"></div>
+            <div class="scrim"></div>
+            <div class="quick">
+              <button type="button" class="primary">Retomar</button>
+              <button type="button">⋯</button>
+            </div>
+          </div>
+        </div>
+        <div class="meta">
+          <strong>Espelho Quebrado</strong>
+          <div class="sub"><span>2/7 takes</span><span>·</span><span>há 2 h</span></div>
+          <div class="progress"><i style="width:28%"></i></div>
+        </div>
+      </article>
+
+      <article class="proj-card" tabindex="0">
+        <div class="stage">
+          <div class="top-badges">
+            <span class="status-pill queued">Na fila</span>
+            <span class="format-pill">16:9</span>
+          </div>
+          <div class="poster ratio-16x9">
+            <div class="thumb" style="background:linear-gradient(120deg,#5a8a40,#1a2810)"></div>
+            <div class="scrim"></div>
+            <div class="quick">
+              <button type="button">Abrir</button>
+              <button type="button">⋯</button>
+            </div>
+          </div>
+        </div>
+        <div class="meta">
+          <strong>Trilho ao Amanhecer</strong>
+          <div class="sub"><span>0/5 takes</span><span>·</span><span>há 40 min</span></div>
+          <div class="progress"><i style="width:0%"></i></div>
+        </div>
+      </article>
+
+      <article class="proj-card" tabindex="0">
+        <div class="stage">
+          <div class="top-badges">
+            <span class="status-pill done">Pronta</span>
+            <span class="format-pill">9:16</span>
+          </div>
+          <div class="poster ratio-9x16">
+            <div class="thumb" style="background:linear-gradient(160deg,#3a6a8a,#102028)"></div>
+            <div class="scrim"></div>
+            <div class="quick">
+              <button type="button" class="primary">Master</button>
+              <button type="button">⋯</button>
+            </div>
+          </div>
+        </div>
+        <div class="meta">
+          <strong>Sombras na Escada</strong>
+          <div class="sub"><span>6/6 · master</span><span>·</span><span>R$ 18,90</span></div>
+          <div class="progress"><i style="width:100%"></i></div>
+        </div>
+      </article>
+
+      <article class="proj-card" tabindex="0">
+        <div class="stage">
+          <div class="top-badges">
+            <span class="status-pill draft">Rascunho</span>
+            <span class="format-pill">4:5</span>
+          </div>
+          <div class="poster ratio-4x5">
+            <div class="thumb" style="background:linear-gradient(160deg,#b09050,#302010)"></div>
+            <div class="scrim"></div>
+            <div class="quick">
+              <button type="button" class="primary">Enfileirar</button>
+              <button type="button">⋯</button>
+            </div>
+          </div>
+        </div>
+        <div class="meta">
+          <strong>Janela do 3º</strong>
+          <div class="sub"><span>0/3 takes</span><span>·</span><span>há 3 dias</span></div>
+          <div class="progress"><i style="width:0%"></i></div>
+        </div>
+      </article>
+    </div>
+
+    <aside class="hint-footer">
+      <strong>O que este mock propõe</strong> (só referência — a página real não foi alterada):
+      <ol>
+        <li><strong>Faixa “Precisa de você”</strong> — revisões e jobs ativos sobem do grid para um rail horizontal.</li>
+        <li><strong>Toolbar enxuta</strong> — status principal em segmentos; NSFW/SFW/arquivo/formato em “Mais filtros”.</li>
+        <li><strong>Poster no aspect ratio real</strong> — shell 3:4 uniforme; 9:16 / 16:9 / 1:1 / 4:5 com letterbox (grid não quebra).</li>
+        <li><strong>Ações no hover</strong> — Revisar / Enfileirar / Master sem depender só do botão direito.</li>
+        <li><strong>Densidade</strong> — compacto / confortável / cinema.</li>
+        <li><strong>Badges quietos</strong> — SFW some; NSFW e formato ficam quando importam.</li>
+        <li><strong>Cabeçalho com contadores</strong> — “Nova história” fica só no topbar; o head vira resumo operacional.</li>
+      </ol>
+    </aside>
+  </div>
+
+  <script>
+    // Density toggle
+    document.querySelectorAll(".density button").forEach((btn) => {
+      btn.addEventListener("click", () => {
+        document.querySelectorAll(".density button").forEach((b) => b.classList.remove("on"));
+        btn.classList.add("on");
+        document.body.dataset.density = btn.dataset.density;
+      });
+    });
+
+    // Status seg (visual only)
+    document.querySelectorAll('.seg[aria-label="Status"] button').forEach((btn) => {
+      btn.addEventListener("click", () => {
+        btn.parentElement.querySelectorAll("button").forEach((b) => b.classList.remove("on"));
+        btn.classList.add("on");
+      });
+    });
+
+    // More filters
+    const moreToggle = document.getElementById("moreToggle");
+    const morePanel = document.getElementById("morePanel");
+    moreToggle.addEventListener("click", () => {
+      const open = morePanel.classList.toggle("open");
+      moreToggle.setAttribute("aria-expanded", String(open));
+      moreToggle.textContent = open ? "Menos filtros" : "Mais filtros";
+    });
+    morePanel.querySelectorAll(".chip").forEach((chip) => {
+      chip.addEventListener("click", () => chip.classList.toggle("active"));
+    });
+  </script>
+</body>
+</html>

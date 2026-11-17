@@ -72,7 +72,54 @@ export const api = {
   enqueue: (id) => req(`/api/projects/${id}/enqueue`, { method: "POST" }),
   prioritize: (id) => req(`/api/projects/${id}/prioritize`, { method: "POST" }),
   regenerateVideo: (id) => req(`/api/projects/${id}/regenerate`, { method: 'POST', body: JSON.stringify({ confirmed: true }) }),
+  regenerateFromTake: (id, body) =>
+    req(`/api/projects/${id}/regenerate-from`, {
+      method: "POST",
+      body: JSON.stringify({ confirmed: true, ...body }),
+    }),
+  projectTakes: (id) => req(`/api/projects/${id}/takes`),
+  takeClipUrl: (id, n, v) =>
+    `/api/projects/${id}/takes/${n}/clip${v ? `?v=${encodeURIComponent(v)}` : ""}`,
+  saveEditorMix: (id, body) =>
+    req(`/api/projects/${id}/editor-mix`, { method: "PUT", body: JSON.stringify(body) }),
+  uploadEditorAudio: async (id, file, { offset_sec = 0 } = {}) => {
+    const form = new FormData();
+    form.append("file", file);
+    const q = offset_sec ? `?offset_sec=${encodeURIComponent(offset_sec)}` : "";
+    const res = await fetch(`/api/projects/${id}/editor-audio${q}`, { method: "POST", body: form });
+    const text = await res.text();
+    let data = null;
+    try {
+      data = text ? JSON.parse(text) : null;
+    } catch {
+      data = { raw: text };
+    }
+    if (!res.ok) {
+      const msg = data?.detail || data?.error || data?.message || res.statusText;
+      throw new Error(typeof msg === "string" ? msg : JSON.stringify(msg));
+    }
+    return data;
+  },
+  deleteEditorAudio: (id, clipId) =>
+    req(`/api/projects/${id}/editor-audio/${encodeURIComponent(clipId)}`, { method: "DELETE" }),
+  editorAudioUrl: (id, clipId, v) =>
+    `/api/projects/${id}/editor-audio/${encodeURIComponent(clipId)}${
+      v ? `?v=${encodeURIComponent(v)}` : ""
+    }`,
+  buildEditorMaster: (id, body = {}) =>
+    req(`/api/projects/${id}/editor-master`, {
+      method: "POST",
+      body: JSON.stringify(body),
+    }),
+  masterVersions: (id) => req(`/api/projects/${id}/master-versions`),
+  restoreMasterVersion: (id, versionId) =>
+    req(`/api/projects/${id}/master-versions/${encodeURIComponent(versionId)}/restore`, {
+      method: "POST",
+    }),
+  masterVersionUrl: (id, versionId) =>
+    `/api/projects/${id}/master-versions/${encodeURIComponent(versionId)}`,
   footageExport: (id, body) => req(`/api/projects/${id}/footage-export`, { method: 'POST', body: JSON.stringify(body) }),
+  footageRestore: (id) => req(`/api/projects/${id}/footage-restore`, { method: 'POST' }),
   dequeue: (id) => req(`/api/projects/${id}/dequeue`, { method: "POST" }),
   comfyInterrupt: () => req("/api/comfy/interrupt", { method: "POST" }),
   buildMaster: (id, force = true) =>

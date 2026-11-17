@@ -234,6 +234,148 @@ async def regenerate_generation(project_id: str) -> dict[str, Any]:
         return job
 
 
+async def regenerate_from_take(
+    project_id: str,
+    take_n: int,
+    *,
+    prompt: str | None = None,
+) -> dict[str, Any]:
+    """Regenerate take N and same-session Continuity dependents; keep other sessions."""
+    from ..comfy.validation import check_runtime
+    from ..config import PROJECTS_DIR
+    from ..continuity.cascade import (
+        cascade_from_take,
+        cascade_ns,
+        checkpoint_after_quarantine,
+        prior_in_session,
+        take_session,
+    )
+
+    project = db.get_project(project_id)
+    if not project or project.get('status') not in {'done', 'failed'}:
+        raise RuntimeError('Somente vídeos concluídos (ou falhos) podem regerar um take')
+    takes_in = list(project.get('takes') or [])
+    if not takes_in:
+        raise RuntimeError('O vídeo não possui takes para regerar')
+    try:
+        cascade = cascade_from_take(takes_in, take_n)
+    except ValueError as exc:
+        raise RuntimeError(str(exc)) from exc
+    cascade_set = {int(t['n']) for t in cascade}
+    target = cascade[0]
+    kind = str(target.get('kind') or '').lower()
+    session = take_session(target)
+    priors = prior_in_session(takes_in, take_n)
+    if kind == 'continue' and not priors:
+        raise RuntimeError('Take CONTINUE sem predecessor na sessão')
+
+    readiness = await check_runtime(project)
+    if not readiness['ok']:
+        raise RuntimeError('Geração bloqueada: ' + '; '.join(readiness['errors']))
+
+    async with _dispatch_lock:
+        project = db.get_project(project_id)
+        if not project or project.get('status') not in {'done', 'failed'}:
+            raise RuntimeError('O vídeo já foi alterado ou enfileirado')
+        takes_in = list(project.get('takes') or [])
+        cascade = cascade_from_take(takes_in, take_n)
+        cascade_set = {int(t['n']) for t in cascade}
+        target = cascade[0]
+        kind = str(target.get('kind') or '').lower()
+        session = take_session(target)
+        priors = prior_in_session(takes_in, take_n)
+
+        run_id = uuid.uuid4().hex[:12]
+        seed_base = secrets.randbelow(2**31 - 100000)
+        prev_state = db.get_runner_state(project_id) or {}
+        prev_completed = {int(x) for x in (prev_state.get('completed') or [])}
+        prev_checkpoints = dict(prev_state.get('session_checkpoints') or {})
+
+        new_session = session
+        if kind == 'new':
+            # Restart the Continuity chain under a fresh session name.
+            new_session = f"regen_{project_id[:8]}_{run_id}_s"
+            checkpoint = None
+            prev_checkpoints.pop(session, None)
+            prev_checkpoints.pop(new_session, None)
+        else:
+            checkpoint = checkpoint_after_quarantine(session, keep_count=len(priors))
+            if checkpoint:
+                prev_checkpoints[session] = checkpoint
+            else:
+                prev_checkpoints.pop(session, None)
+
+        updated_takes: list[dict[str, Any]] = []
+        for take in sorted(takes_in, key=lambda t: int(t.get('n') or 0)):
+            n = int(take['n'])
+            row = dict(take)
+            if n in cascade_set:
+                row['seed'] = seed_base + (n - take_n)
+                row['prefix'] = f"video/{project['slug']}/t{n:02d}_r{run_id}"
+                if kind == 'new':
+                    row['session'] = new_session
+                if n == take_n and prompt is not None:
+                    text = str(prompt).strip()
+                    if not text:
+                        raise RuntimeError('Prompt do take não pode ficar vazio')
+                    row['prompt'] = text
+            updated_takes.append(row)
+
+        kept_completed = sorted(n for n in prev_completed if n not in cascade_set)
+        # Drop checkpoints for renamed session; keep other sessions intact.
+        session_checkpoints = {
+            k: v for k, v in prev_checkpoints.items()
+            if k != session or kind == 'continue'
+        }
+        if kind == 'continue' and checkpoint:
+            session_checkpoints[session] = checkpoint
+        elif kind == 'new':
+            session_checkpoints.pop(new_session, None)
+
+        runner_state = {
+            'completed': kept_completed,
+            'last_ok': kept_completed[-1] if kept_completed else None,
+            'session_checkpoints': session_checkpoints,
+            'partial_regen_from': take_n,
+            'partial_regen_cascade': cascade_ns(updated_takes, take_n),
+        }
+
+        prev_stats = dict(project.get('stats') or {})
+        for key in ('master', 'original_master', 'preview'):
+            prev_stats.pop(key, None)
+        stats = {
+            **prev_stats,
+            'generation_id': run_id,
+            'partial_regen_at': time.time(),
+            'partial_from_take': take_n,
+            'partial_cascade': sorted(cascade_set),
+        }
+
+        queue = db.queued_projects()
+        position = max((p.get('queue_pos') or 0 for p in queue), default=0) + 1
+        payload = {
+            'generation_id': run_id,
+            'regenerate': True,
+            'regenerate_from': take_n,
+            'cascade': sorted(cascade_set),
+        }
+        job = db.partial_reset_project_generation(
+            project_id, updated_takes, runner_state, stats, position, payload
+        )
+        try:
+            (PROJECTS_DIR / project_id / 'poster.jpg').unlink(missing_ok=True)
+        except OSError:
+            pass
+        await broadcast({'type': 'project_updated', 'project_id': project_id})
+        await broadcast({
+            'type': 'job_queued',
+            'project_id': project_id,
+            'job': job,
+            'message': f'Regeração parcial do take {take_n} (+continuidade da sessão)',
+        })
+        return job
+
+
 async def submit_review(project_id: str, decision: str) -> dict[str, Any]:
     if decision not in {"approve", "reject"}:
         raise RuntimeError("decision deve ser approve|reject")

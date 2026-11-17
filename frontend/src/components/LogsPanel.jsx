@@ -2,7 +2,7 @@ import React, { useEffect, useRef, useState } from "react";
 import { api } from "../api.js";
 import { useLocale, useT } from "../i18n/index.jsx";
 
-export default function LogsPanel({ projectId = null }) {
+export default function LogsPanel({ projectId = null, embedded = false }) {
   const t = useT();
   const { dateLocale } = useLocale();
   const [items, setItems] = useState([]);
@@ -90,10 +90,10 @@ export default function LogsPanel({ projectId = null }) {
   }
 
   return (
-    <section className="logs-panel" aria-label={t(projectId ? "logs.videoTitle" : "logs.title")}>
+    <section className={`logs-panel${embedded ? " is-embedded" : ""}`} aria-label={t(projectId ? "logs.videoTitle" : "logs.title")}>
       <div className="logs-heading">
         <div>
-          <h2>{t(projectId ? "logs.videoTitle" : "logs.title")}</h2>
+          {!embedded && <h2>{t(projectId ? "logs.videoTitle" : "logs.title")}</h2>}
           <p className="muted">{t("logs.hint")}</p>
         </div>
         <div className="logs-tools">

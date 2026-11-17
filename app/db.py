@@ -149,6 +149,18 @@ def init_db() -> None:
             if not c.execute("SELECT 1 FROM settings WHERE key='migration_footage_manual_v2'").fetchone():
                 c.execute("UPDATE projects SET cctv_timestamp_enabled=0 WHERE category='footage'")
                 c.execute("INSERT INTO settings(key,value_json) VALUES('migration_footage_manual_v2','true')")
+            if not c.execute("SELECT 1 FROM settings WHERE key='migration_footage_retag_v3'").fetchone():
+                for r in c.execute('SELECT id, slug, title, category, cctv_timestamp_start FROM projects').fetchall():
+                    inferred = infer_category(r['slug'] or '', r['title'] or '')
+                    if (r['category'] or 'general') != inferred:
+                        start = r['cctv_timestamp_start'] or (
+                            default_footage_time(r['slug'] or '') if inferred == 'footage' else None
+                        )
+                        c.execute(
+                            "UPDATE projects SET category=?, cctv_timestamp_enabled=0, cctv_timestamp_start=? WHERE id=?",
+                            (inferred, start, r['id']),
+                        )
+                c.execute("INSERT INTO settings(key,value_json) VALUES('migration_footage_retag_v3','true')")
             c.commit()
         finally:
             c.close()
@@ -446,7 +458,7 @@ def create_project(data: dict[str, Any]) -> dict[str, Any]:
     now = time.time()
     pid = str(uuid.uuid4())
     slug = data.get("slug") or _slugify(data.get("title") or "video")
-    category = data.get('category') or infer_category(slug)
+    category = data.get('category') or infer_category(slug, data.get('title') or '')
     if category not in {'general', 'footage'}:
         raise ValueError('Categoria inválida')
     # ensure unique slug
@@ -651,6 +663,54 @@ def reset_project_generation(project_id: str, takes: list[dict], seed_base: int,
                       (json.dumps(takes, ensure_ascii=False), seed_base, json.dumps(stats), queue_pos, now, project_id))
             c.execute("INSERT INTO jobs(id,project_id,kind,payload_json,status,priority,created_at) VALUES(?,?,'generate_video',?,'queued',100,?)",
                       (job_id, project_id, json.dumps({'generation_id': stats['generation_id'], 'regenerate': True}), now))
+            c.commit()
+        except Exception:
+            c.rollback()
+            raise
+        finally:
+            c.close()
+    return get_job(job_id)
+
+
+def partial_reset_project_generation(
+    project_id: str,
+    takes: list[dict],
+    runner_state: dict,
+    stats: dict,
+    queue_pos: int,
+    payload: dict,
+) -> dict:
+    """Invalidate a Continuity cascade, keep earlier completed takes, and re-queue."""
+    job_id = str(uuid.uuid4())
+    now = time.time()
+    with _lock:
+        c = _conn()
+        try:
+            c.execute('BEGIN IMMEDIATE')
+            row = c.execute('SELECT status FROM projects WHERE id=?', (project_id,)).fetchone()
+            if not row or row['status'] not in {'done', 'failed'}:
+                raise ValueError('O vídeo não está concluído ou já foi enfileirado')
+            c.execute(
+                "UPDATE jobs SET status='cancelled', finished_at=?, message='Substituído pela regeração parcial' "
+                "WHERE project_id=? AND status IN ('queued','running','paused','awaiting_review')",
+                (now, project_id),
+            )
+            c.execute('DELETE FROM footage_exports WHERE project_id=?', (project_id,))
+            c.execute(
+                """INSERT INTO runner_state(project_id, state_json) VALUES(?,?)
+                   ON CONFLICT(project_id) DO UPDATE SET state_json=excluded.state_json""",
+                (project_id, json.dumps(runner_state, ensure_ascii=False)),
+            )
+            c.execute(
+                "UPDATE projects SET status='queued', takes_json=?, stats_json=?, queue_pos=?, "
+                "error=NULL, review_take=NULL, review_full_path=NULL, review_current_path=NULL, updated_at=? WHERE id=?",
+                (json.dumps(takes, ensure_ascii=False), json.dumps(stats, ensure_ascii=False),
+                 queue_pos, now, project_id),
+            )
+            c.execute(
+                "INSERT INTO jobs(id,project_id,kind,payload_json,status,priority,created_at) VALUES(?,?,'generate_video',?,'queued',100,?)",
+                (job_id, project_id, json.dumps(payload, ensure_ascii=False), now),
+            )
             c.commit()
         except Exception:
             c.rollback()

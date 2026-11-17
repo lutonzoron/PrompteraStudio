@@ -3,7 +3,7 @@ import { api } from '../api.js';
 import { useT } from '../i18n/index.jsx';
 import { runProjectAction, useProjectActions } from '../projectActions.js';
 
-export default function FootagePanel({ project, onProject, onRefresh, setToast, available }) {
+export default function FootagePanel({ project, onProject, onRefresh, setToast, available, embedded = false }) {
   const t = useT();
   const pending = useProjectActions();
   const [start, setStart] = useState(project.cctv_timestamp_start || '');
@@ -13,6 +13,7 @@ export default function FootagePanel({ project, onProject, onRefresh, setToast, 
     setStart(project.cctv_timestamp_start || '');
   }, [project.id, project.cctv_timestamp_start, project.cctv_timestamp_enabled]);
   const busy = pending.has(project.id);
+  const cctvActive = !!project.cctv_active;
 
   async function apply(exportVideo) {
     return runProjectAction(project.id, t(exportVideo ? 'footage.exporting' : 'footage.saving'), async () => {
@@ -26,9 +27,21 @@ export default function FootagePanel({ project, onProject, onRefresh, setToast, 
     });
   }
 
-  return <section className="pp-panel footage-panel" id="footage-controls">
-    <h2>{t('footage.title')}</h2>
+  async function restore() {
+    return runProjectAction(project.id, t('footage.restoring'), async () => {
+      try {
+        await api.footageRestore(project.id);
+        onProject(await api.project(project.id));
+        await onRefresh();
+        setToast(t('footage.restored'));
+      } catch (e) { setToast(String(e.message || e)); }
+    });
+  }
+
+  return <section className={`pp-panel footage-panel${embedded ? ' is-embedded' : ''}`} id="footage-controls">
+    {!embedded && <h2>{t('footage.title')}</h2>}
     <p className="muted">{t('footage.hint')}</p>
+    {cctvActive ? <p className="alert good">{t('footage.active')}</p> : null}
     {!available && <p className="alert warn">{t('footage.needsRestart')}</p>}
     <div className="field">
       <label htmlFor={`clock-${project.id}`}>{t('footage.start')}</label>
@@ -46,7 +59,12 @@ export default function FootagePanel({ project, onProject, onRefresh, setToast, 
     <div className="row">
       <button type="button" disabled={busy || !available || !start} onClick={() => apply(false)}>{t('common.save')}</button>
       <button type="button" className="primary" disabled={busy || !available || !start || !project.has_master}
-        onClick={() => apply(true)}>{t('footage.apply')}</button>
+        onClick={() => apply(true)}>{cctvActive ? t('footage.reapply') : t('footage.apply')}</button>
+      {cctvActive ? (
+        <button type="button" className="danger" disabled={busy || !available} onClick={restore}>
+          {t('footage.remove')}
+        </button>
+      ) : null}
     </div>
     {!project.has_master && <p className="muted">{t('footage.waitMaster')}</p>}
     <div className="stack">
