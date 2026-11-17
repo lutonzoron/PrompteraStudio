@@ -22,9 +22,10 @@ def _project_poster_path(project_id: str) -> Path:
 def _candidate_videos(project: dict) -> list[Path]:
     cands: list[Path] = []
     stats = project.get("stats") or {}
-    master = stats.get("master")
-    if master:
-        cands.append(Path(master))
+    for key in ("master", "original_master"):
+        value = stats.get(key)
+        if value:
+            cands.append(Path(value))
     slug = project.get("slug") or ""
     deliver = DELIVERABLES_DIR / slug
     if deliver.exists():
@@ -36,6 +37,14 @@ def _candidate_videos(project: dict) -> list[Path]:
         p = project.get(key)
         if p:
             cands.append(Path(p))
+    # Fallback: any completed take clip still on disk
+    try:
+        from .masters import index_take_files
+        indexed = index_take_files(project)
+        for n in sorted(indexed):
+            cands.append(indexed[n])
+    except Exception:
+        pass
     out = []
     seen = set()
     for p in cands:

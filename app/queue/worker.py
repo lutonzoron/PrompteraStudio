@@ -341,8 +341,10 @@ async def regenerate_from_take(
         }
 
         prev_stats = dict(project.get('stats') or {})
-        for key in ('master', 'original_master', 'preview'):
-            prev_stats.pop(key, None)
+        prev_master = prev_stats.get('master') or prev_stats.get('original_master')
+        prev_stats.pop('preview', None)
+        # Keep the previous master as original so poster/CCTV restore still work
+        # while the cascade regenerates. A fresh master is built when the job finishes.
         stats = {
             **prev_stats,
             'generation_id': run_id,
@@ -350,6 +352,9 @@ async def regenerate_from_take(
             'partial_from_take': take_n,
             'partial_cascade': sorted(cascade_set),
         }
+        if prev_master:
+            stats['original_master'] = str(prev_stats.get('original_master') or prev_master)
+            stats['master'] = str(prev_master)
 
         queue = db.queued_projects()
         position = max((p.get('queue_pos') or 0 for p in queue), default=0) + 1
@@ -362,9 +367,11 @@ async def regenerate_from_take(
         job = db.partial_reset_project_generation(
             project_id, updated_takes, runner_state, stats, position, payload
         )
+        # Keep / refresh the poster on partial regen — only the cascade takes are replaced.
         try:
-            (PROJECTS_DIR / project_id / 'poster.jpg').unlink(missing_ok=True)
-        except OSError:
+            from ..posters import ensure_poster
+            ensure_poster(project_id)
+        except Exception:
             pass
         await broadcast({'type': 'project_updated', 'project_id': project_id})
         await broadcast({

@@ -185,6 +185,8 @@ class ProjectCreateBody(BaseModel):
     height: int = 992
     steps: int = 8
     seed_base: int = 2000
+    status: Literal['draft', 'composing'] = 'draft'
+    stats: dict[str, Any] | None = None
 
 
 class ProjectUpdateBody(BaseModel):
@@ -205,6 +207,9 @@ class ProjectUpdateBody(BaseModel):
     steps: int | None = None
     seed_base: int | None = None
     queue_pos: int | None = None
+    status: Literal['draft', 'composing', 'queued', 'generating', 'paused',
+                     'awaiting_review', 'done', 'failed', 'archived'] | None = None
+    stats: dict[str, Any] | None = None
 
 
 class StoryGenerateBody(BaseModel):
@@ -245,9 +250,18 @@ class EditorAudioClipPatch(BaseModel):
     label: str | None = None
 
 
+class EditorCropBody(BaseModel):
+    enabled: bool = True
+    x: float = Field(default=0.0, ge=0.0, le=1.0)
+    y: float = Field(default=0.0, ge=0.0, le=1.0)
+    w: float = Field(default=1.0, ge=0.05, le=1.0)
+    h: float = Field(default=1.0, ge=0.05, le=1.0)
+
+
 class EditorMixBody(BaseModel):
     muted_takes: list[int] = Field(default_factory=list)
     audio_clips: list[EditorAudioClipPatch] | None = None
+    crop: EditorCropBody | None = None
 
 
 class EditorMasterBody(BaseModel):
@@ -503,6 +517,15 @@ async def api_queue() -> dict[str, Any]:
             "total": len(takes),
             "completed_ns": sorted(done),
         }
+        # Top-level regen fields so the queue UI never misses cascade detection.
+        cascade = stats.get("partial_cascade") or state.get("partial_regen_cascade") or []
+        try:
+            cascade_ns = sorted({int(n) for n in cascade if int(n) > 0})
+        except (TypeError, ValueError):
+            cascade_ns = []
+        d["regen_cascade"] = cascade_ns
+        d["regen_from"] = int(stats.get("partial_from_take") or state.get("partial_regen_from") or (cascade_ns[0] if cascade_ns else 0)) or None
+        d["is_partial_regen"] = bool(cascade_ns)
         if not external:
             has_internal = True
         take_ns = [int(t.get("n") or 0) for t in takes if int(t.get("n") or 0) > 0]
@@ -987,11 +1010,15 @@ def _normalize_audio_clips(mix: dict[str, Any], project_id: str) -> list[dict[st
 
 
 def _editor_mix_payload(project: dict[str, Any], project_id: str) -> dict[str, Any]:
+    from .editor_crop import normalize_crop
+
     mix = dict((project.get('stats') or {}).get('editor_mix') or {})
     clips = _normalize_audio_clips(mix, project_id)
+    crop = normalize_crop(mix.get('crop'))
     return {
         'muted_takes': sorted({int(n) for n in (mix.get('muted_takes') or []) if int(n) > 0}),
         'audio_clips': clips,
+        'crop': crop,
     }
 
 
@@ -1017,6 +1044,8 @@ def _find_audio_clip(mix: dict[str, Any], project_id: str, clip_id: str) -> dict
 
 @app.put('/api/projects/{project_id}/editor-mix')
 def api_put_editor_mix(project_id: str, body: EditorMixBody) -> dict[str, Any]:
+    from .editor_crop import normalize_crop
+
     project = db.get_project(project_id)
     if not project:
         raise HTTPException(404, 'Projeto não encontrado')
@@ -1044,6 +1073,12 @@ def api_put_editor_mix(project_id: str, body: EditorMixBody) -> dict[str, Any]:
         mix.pop('audio_name', None)
         mix.pop('audio_volume', None)
         mix.pop('audio_offset_sec', None)
+    if 'crop' in body.model_fields_set:
+        crop = normalize_crop(body.crop.model_dump() if body.crop else None)
+        if crop:
+            mix['crop'] = crop
+        else:
+            mix.pop('crop', None)
     stats['editor_mix'] = mix
     updated = db.update_project(project_id, stats=stats)
     return {'ok': True, 'editor_mix': _editor_mix_payload(updated or project, project_id)}

@@ -11,7 +11,7 @@ export default function RegenerationTakes({ project, active = false, currentTake
   return (
     <div className="regen-takes">
       <div className="regen-summary">
-        {t("regeneration.chain", { from: view.from, total: view.total })}
+        {t("regeneration.individual", { total: view.total })}
         <span className="muted"> · {t("regeneration.summary", { done: view.completed, total: view.total })}</span>
       </div>
       <div className="regen-take-list">
@@ -24,16 +24,16 @@ export default function RegenerationTakes({ project, active = false, currentTake
               <span className={`regen-state is-${row.state}`}>{t(`regeneration.${row.state}`)}</span>
             </div>
             {row.title ? <div className="regen-take-title">{row.title}</div> : null}
-            {row.state === "generating" || row.state === "done" ? (
+            {row.state === "generating" || row.state === "done" || row.state === "queued" ? (
               <div
-                className={`progress ${row.percent == null ? "is-indeterminate" : ""}`}
+                className={`progress ${row.state === "generating" && row.percent == null ? "is-indeterminate" : ""}`}
                 role="progressbar"
                 aria-label={t("queue.takeOnly", { n: row.n })}
                 aria-valuemin={0}
                 aria-valuemax={100}
-                aria-valuenow={row.percent ?? undefined}
+                aria-valuenow={row.percent ?? (row.state === "done" ? 100 : 0)}
               >
-                <i style={{ width: `${row.percent ?? 35}%` }} />
+                <i style={{ width: `${row.state === "done" ? 100 : row.percent ?? (row.state === "generating" ? 35 : 2)}%` }} />
               </div>
             ) : null}
           </div>
@@ -49,7 +49,16 @@ function dependentLabel(t, view, row) {
   return prev != null ? t("regeneration.dependentOf", { n: prev }) : t("regeneration.dependent");
 }
 
-/** One visual card per cascade take — used on the full Queue board. */
+function statusText(t, view, row) {
+  if (row.state === "dependent") return dependentLabel(t, view, row);
+  if (row.state === "queued") return `${t("regeneration.badge")} · ${t("regeneration.queued")}`;
+  if (row.state === "generating") return `${t("regeneration.badge")} · ${t("regeneration.generating")}`;
+  return t(`regeneration.${row.state}`);
+}
+
+/**
+ * One full queue card per cascade take — visually separate entries for take 5, take 6, …
+ */
 export function RegenerationTakeCards({
   project,
   active = false,
@@ -57,47 +66,61 @@ export function RegenerationTakeCards({
   estimate,
   position,
   isCurrent = false,
-  thumb,
+  formatLabel = null,
+  packLabel = null,
+  thumb = null,
+  renderThumb = null,
   actions = null,
 }) {
   const t = useT();
   const view = regenerationView(project, { active, currentTake, estimate });
   if (!view) return null;
+  const pack = packLabel || "SFW";
+  const fmt = formatLabel || null;
+
   return (
-    <div
-      className={`qb-regen-group ${active ? "is-live" : ""}`}
-      role="group"
-      aria-label={t("regeneration.chain", { from: view.from, total: view.total })}
-    >
-      <div className="qb-regen-group-head">
-        {position != null ? <div className="qb-pos">#{position}</div> : null}
-        <div className="qb-regen-group-meta">
-          <strong>{cleanTitle(project.title)}</strong>
-          <span className="qb-pill regen">{t("regeneration.badge")}</span>
-          {active ? <span className="qb-pill live">{t("queue.live")}</span> : null}
-          {isCurrent ? <span className="qb-pill here">{t("queueBoard.thisVideo")}</span> : null}
-          <span className="muted">{t("regeneration.chain", { from: view.from, total: view.total })}</span>
-        </div>
+    <div className={`qb-regen-stack ${active ? "is-live" : ""}`} role="group" aria-label={t("regeneration.individual", { total: view.total })}>
+      <div className="qb-regen-stack-banner">
+        {position != null ? <span className="qb-pos">#{position}</span> : null}
+        <span className="qb-pill regen">{t("regeneration.individual", { total: view.total })}</span>
+        <span className="muted">{cleanTitle(project.title)}</span>
+        <span className="muted">· {t("regeneration.chain", { from: view.from, total: view.total })}</span>
       </div>
-      <div className="qb-regen-take-list">
-        {view.rows.map((row) => (
+
+      {view.rows.map((row, idx) => {
+        const thumbNode = typeof renderThumb === "function" ? renderThumb(row) : thumb;
+        const liveTake = active && row.state === "generating";
+        return (
           <article
-            key={`${project.id}-t${row.n}`}
-            className={`qb-card qb-regen-take is-${row.state} ${row.state === "generating" ? "is-live" : ""}`}
+            key={`${project.id}-regen-t${row.n}`}
+            className={`qb-card qb-regen-card is-${row.state} ${liveTake ? "is-live" : ""} ${isCurrent ? "is-here" : ""}`}
           >
             <div className="qb-card-main">
-              {thumb}
+              <div className="qb-pos qb-pos-take">t{String(row.n).padStart(2, "0")}</div>
+              {thumbNode}
               <div className="qb-card-body">
                 <div className="qb-card-top">
                   <strong>
                     {cleanTitle(project.title)} · {t("queue.takeOnly", { n: row.n })}
                   </strong>
+                  <span className="qb-pill regen">{t("regeneration.badge")}</span>
+                  {liveTake ? <span className="qb-pill live">{t("queue.live")}</span> : null}
                   <span className={`qb-pill regen-state is-${row.state}`}>{t(`regeneration.${row.state}`)}</span>
                 </div>
-                {row.title ? <div className="qb-card-meta">{row.title}</div> : null}
-                <div className="qb-card-status">
-                  {row.state === "dependent" ? dependentLabel(t, view, row) : t(`regeneration.${row.state}`)}
+                <div className="qb-card-meta">
+                  <span>{project.slug || "—"}</span>
+                  <span>·</span>
+                  <span>{pack}</span>
+                  {fmt ? (
+                    <>
+                      <span>·</span>
+                      <span>{fmt}</span>
+                    </>
+                  ) : null}
+                  <span>·</span>
+                  <span>{t("regeneration.onlyTake", { n: row.n })}</span>
                 </div>
+                <div className="qb-card-status">{statusText(t, view, row)}</div>
                 {(row.state === "generating" || row.state === "done" || row.state === "queued") && (
                   <div className="qb-card-progress">
                     <div
@@ -109,28 +132,27 @@ export function RegenerationTakeCards({
                     >
                       <i
                         style={{
-                          width: `${
-                            row.state === "done" ? 100 : row.percent ?? (row.state === "generating" ? 35 : 2)
-                          }%`,
+                          width: `${row.state === "done" ? 100 : row.percent ?? (row.state === "generating" ? 35 : 2)}%`,
                         }}
                       />
                     </div>
                     <span>
                       {row.state === "done"
-                        ? "100%"
+                        ? t("regeneration.done")
                         : row.percent != null
                           ? `${Math.round(row.percent)}%`
-                          : row.state === "generating"
-                            ? t("regeneration.generating")
-                            : t("regeneration.queued")}
+                          : t(`regeneration.${row.state}`)}
+                      {" · "}
+                      {idx + 1}/{view.total}
                     </span>
                   </div>
                 )}
               </div>
             </div>
           </article>
-        ))}
-      </div>
+        );
+      })}
+
       {actions ? <div className="qb-card-actions qb-regen-actions">{actions}</div> : null}
     </div>
   );

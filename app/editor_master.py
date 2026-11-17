@@ -12,6 +12,7 @@ from typing import Any
 
 from . import db
 from .config import DELIVERABLES_DIR, PROJECTS_DIR
+from .editor_crop import ffmpeg_crop_filter, normalize_crop
 from .masters import build_master, project_master_info, resolve_master_path
 
 
@@ -50,6 +51,35 @@ def _probe_duration(path: Path) -> float:
         raise RuntimeError("Não foi possível ler a duração do master")
     data = json.loads(proc.stdout or "{}")
     return float((data.get("format") or {}).get("duration") or 0.0)
+
+
+def _probe_size(path: Path) -> tuple[int, int]:
+    proc = subprocess.run(
+        [
+            _ffprobe(),
+            "-v",
+            "error",
+            "-select_streams",
+            "v:0",
+            "-show_entries",
+            "stream=width,height",
+            "-of",
+            "json",
+            str(path),
+        ],
+        capture_output=True,
+        text=True,
+        timeout=20,
+        check=False,
+    )
+    if proc.returncode != 0:
+        raise RuntimeError("Não foi possível ler o tamanho do master")
+    streams = (json.loads(proc.stdout or "{}").get("streams") or [{}])
+    width = int(streams[0].get("width") or 0)
+    height = int(streams[0].get("height") or 0)
+    if width < 2 or height < 2:
+        raise RuntimeError("Dimensões do master inválidas")
+    return width, height
 
 
 def _has_audio_stream(path: Path) -> bool:
@@ -226,83 +256,76 @@ def build_editor_master(project_id: str, *, label: str | None = None) -> dict[st
 
     duration = _probe_duration(source)
     has_video_audio = _has_audio_stream(source)
+    crop = normalize_crop(mix.get("crop"))
+    needs_video_filter = bool(crop)
 
-    cmd = [_ffmpeg(), "-y", "-i", str(source)]
-    for path in audio_inputs:
-        cmd.extend(["-i", str(path)])
-
-    filters: list[str] = []
-    mix_labels: list[str] = []
-
-    if has_video_audio:
-        vol = "[0:a]"
-        if mute_ranges:
-            # Chain volume=0 enables for each muted take range.
-            for i, (start, end) in enumerate(mute_ranges):
-                out = f"[va{i}]"
-                filters.append(
-                    f"{vol}volume=0:enable='between(t,{start:.3f},{end:.3f})'{out}"
-                )
-                vol = out
-        filters.append(f"{vol}aformat=sample_fmts=fltp:sample_rates=48000:channel_layouts=stereo[basea]")
-    else:
-        # Synthetic silence matching video length.
-        filters.append(
-            f"anullsrc=r=48000:cl=stereo,atrim=0:{max(0.1, duration):.3f},asetpts=N/SR/TB[basea]"
-        )
-    mix_labels.append("[basea]")
-
-    for i, meta in enumerate(audio_meta):
-        delay_ms = max(0, int(round(float(meta["offset_sec"]) * 1000)))
-        vol = max(0.0, min(1.0, float(meta["volume"])))
-        # adelay needs per-channel delay
-        filters.append(
-            f"[{i + 1}:a]aformat=sample_fmts=fltp:sample_rates=48000:channel_layouts=stereo,"
-            f"adelay={delay_ms}|{delay_ms},volume={vol:.3f}[bed{i}]"
-        )
-        mix_labels.append(f"[bed{i}]")
-
-    if len(mix_labels) == 1:
-        filters.append(f"{mix_labels[0]}anull[aout]")
-    else:
-        filters.append(
-            f"{''.join(mix_labels)}amix=inputs={len(mix_labels)}:duration=first:dropout_transition=0:normalize=0[aout]"
-        )
-
-    cmd.extend([
-        "-filter_complex",
-        ";".join(filters),
-        "-map",
-        "0:v:0",
-        "-map",
-        "[aout]",
-        "-c:v",
-        "copy",
-        "-c:a",
-        "aac",
-        "-b:a",
-        "192k",
-        "-shortest",
-        "-movflags",
-        "+faststart",
-        str(out_path),
-    ])
-
-    # If no mutes and no beds, still snapshot current master into history (copy).
-    if not mute_ranges and not audio_meta:
+    # Plain snapshot when nothing in the mix changed.
+    if not needs_video_filter and not mute_ranges and not audio_meta:
         shutil.copy2(source, out_path)
     else:
-        proc = subprocess.run(cmd, capture_output=True, text=True, timeout=max(120, duration * 4 + 60))
+        filters: list[str] = []
+        video_map = "0:v:0"
+        if crop:
+            width, height = _probe_size(source)
+            filters.append(f"[0:v]{ffmpeg_crop_filter(crop, width, height)}[vout]")
+            video_map = "[vout]"
+
+        mix_labels: list[str] = []
+        if has_video_audio:
+            vol = "[0:a]"
+            if mute_ranges:
+                for i, (start, end) in enumerate(mute_ranges):
+                    out = f"[va{i}]"
+                    filters.append(
+                        f"{vol}volume=0:enable='between(t,{start:.3f},{end:.3f})'{out}"
+                    )
+                    vol = out
+            filters.append(
+                f"{vol}aformat=sample_fmts=fltp:sample_rates=48000:channel_layouts=stereo[basea]"
+            )
+        else:
+            filters.append(
+                f"anullsrc=r=48000:cl=stereo,atrim=0:{max(0.1, duration):.3f},asetpts=N/SR/TB[basea]"
+            )
+        mix_labels.append("[basea]")
+
+        for i, meta in enumerate(audio_meta):
+            delay_ms = max(0, int(round(float(meta["offset_sec"]) * 1000)))
+            vol = max(0.0, min(1.0, float(meta["volume"])))
+            filters.append(
+                f"[{i + 1}:a]aformat=sample_fmts=fltp:sample_rates=48000:channel_layouts=stereo,"
+                f"adelay={delay_ms}|{delay_ms},volume={vol:.3f}[bed{i}]"
+            )
+            mix_labels.append(f"[bed{i}]")
+
+        if len(mix_labels) == 1:
+            filters.append(f"{mix_labels[0]}anull[aout]")
+        else:
+            filters.append(
+                f"{''.join(mix_labels)}amix=inputs={len(mix_labels)}:duration=first:dropout_transition=0:normalize=0[aout]"
+            )
+
+        cmd = [_ffmpeg(), "-y", "-i", str(source)]
+        for path in audio_inputs:
+            cmd.extend(["-i", str(path)])
+        video_codec = ["-c:v", "libx264", "-preset", "veryfast", "-crf", "18"] if needs_video_filter else ["-c:v", "copy"]
+        cmd.extend([
+            "-filter_complex", ";".join(filters),
+            "-map", video_map, "-map", "[aout]",
+            *video_codec,
+            "-c:a", "aac", "-b:a", "192k",
+            "-shortest", "-movflags", "+faststart",
+            str(out_path),
+        ])
+        proc = subprocess.run(cmd, capture_output=True, text=True, timeout=max(180, duration * 6 + 60))
         if proc.returncode != 0:
-            # Re-encode video if stream copy failed with filter graph
-            cmd_re = [
-                _ffmpeg(), "-y", "-i", str(source),
-            ]
+            # Always re-encode video if stream copy + filters failed.
+            cmd_re = [_ffmpeg(), "-y", "-i", str(source)]
             for path in audio_inputs:
                 cmd_re.extend(["-i", str(path)])
             cmd_re.extend([
                 "-filter_complex", ";".join(filters),
-                "-map", "0:v:0", "-map", "[aout]",
+                "-map", video_map, "-map", "[aout]",
                 "-c:v", "libx264", "-preset", "veryfast", "-crf", "18",
                 "-c:a", "aac", "-b:a", "192k",
                 "-shortest", "-movflags", "+faststart",
@@ -327,6 +350,7 @@ def build_editor_master(project_id: str, *, label: str | None = None) -> dict[st
         "note": "",
         "muted_takes": sorted(muted),
         "audio_clip_ids": [str(m["id"]) for m in audio_meta if m.get("id")],
+        "crop": crop,
     }
     versions = list((project.get("stats") or {}).get("master_versions") or [])
     versions.append(version)

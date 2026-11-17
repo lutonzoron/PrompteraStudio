@@ -392,13 +392,15 @@ def list_projects(include_archived: bool = False) -> list[dict[str, Any]]:
     with _lock:
         c = _conn()
         try:
+            # composing = rascunho de "Nova história" ainda não confirmado (fora da lista)
             if include_archived:
                 rows = c.execute(
-                    "SELECT * FROM projects ORDER BY updated_at DESC"
+                    "SELECT * FROM projects WHERE status != 'composing' "
+                    "ORDER BY updated_at DESC"
                 ).fetchall()
             else:
                 rows = c.execute(
-                    "SELECT * FROM projects WHERE status != 'archived' "
+                    "SELECT * FROM projects WHERE status NOT IN ('archived', 'composing') "
                     "ORDER BY updated_at DESC"
                 ).fetchall()
             states = {

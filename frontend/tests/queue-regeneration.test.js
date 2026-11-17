@@ -19,6 +19,7 @@ const project = {
 test("regenerationCascade reads partial cascade", () => {
   assert.deepEqual(regenerationCascade(project), [5, 6]);
   assert.equal(regenerationCascade({ stats: {} }), null);
+  assert.deepEqual(regenerationCascade({ regen_cascade: [5, 6], is_partial_regen: true }), [5, 6]);
 });
 
 test("regenerationView splits queued chain without whole-video progress", () => {

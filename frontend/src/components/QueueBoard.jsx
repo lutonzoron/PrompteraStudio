@@ -254,7 +254,15 @@ export default function QueueBoard({
           estimate={estimate?.current}
           position={position}
           isCurrent={isCurrent}
-          thumb={thumb}
+          packLabel={pack}
+          formatLabel={fmt}
+          renderThumb={() => (
+            <Thumb
+              project={p}
+              openLabel={t("queue.openProject")}
+              onOpen={onOpenProject ? () => onOpenProject(p.id) : undefined}
+            />
+          )}
           actions={cardActions(p, { isLive, isCurrent })}
         />
       );

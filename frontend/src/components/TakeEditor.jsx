@@ -1,4 +1,5 @@
-import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import React, { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import { api } from "../api.js";
 import { useConfirm } from "./ConfirmDialog.jsx";
 import {
@@ -13,6 +14,7 @@ import {
 import { useLocale, useT } from "../i18n/index.jsx";
 import { VIDEO_FORMATS } from "./VideoFormat.jsx";
 import { takeSelectedFiles } from "../editorFiles.js";
+import CropOverlay, { defaultCrop } from "./CropOverlay.jsx";
 
 const SESSION_HUES = [152, 210, 28, 280, 48, 330];
 const PX_PER_SEC = 28;
@@ -97,18 +99,24 @@ export default function TakeEditor({
   const playheadRef = useRef(0);
   const rafRef = useRef(0);
   const mixRef = useRef({ muted_takes: [], audio_clips: [] });
+  const suppressSeekRef = useRef(false);
+  const audioDragIdRef = useRef(null);
 
   const [selectedTake, setSelectedTake] = useState(null);
   const [selectedAudioId, setSelectedAudioId] = useState(null);
+  const [draggingAudioId, setDraggingAudioId] = useState(null);
+  const [audioMenu, setAudioMenu] = useState(null); // { clipId, x, y }
+  const audioMenuRef = useRef(null);
   const [promptDraft, setPromptDraft] = useState("");
   const [playhead, setPlayhead] = useState(0);
   const [playing, setPlaying] = useState(false);
-  const [inspectorTab, setInspectorTab] = useState("take"); // take | masters
+  const [inspectorTab, setInspectorTab] = useState("take"); // take | masters | crop
   const [mix, setMix] = useState(() => ({
     muted_takes: [],
     audio_clips: [],
     ...(project?.editor_mix || {}),
   }));
+  const [cropEditing, setCropEditing] = useState(false);
   const [zoom, setZoom] = useState(1);
   const [versions, setVersions] = useState(() => project?.master_versions || []);
   const [mediaDuration, setMediaDuration] = useState(0);
@@ -270,8 +278,6 @@ export default function TakeEditor({
     const count = Math.max(1, maxTrack + 1);
     return Array.from({ length: count }, (_, i) => i);
   }, [audioClips]);
-  const selectedAudio = audioClips.find((c) => c.id === selectedAudioId) || null;
-
   useEffect(() => {
     const next = project?.editor_mix || {};
     setMix({
@@ -416,6 +422,10 @@ export default function TakeEditor({
   }
 
   function seekTimeline(clientX) {
+    if (suppressSeekRef.current || audioDragIdRef.current) {
+      suppressSeekRef.current = false;
+      return;
+    }
     const canvas = canvasRef.current;
     if (!canvas) return;
     const rect = canvas.getBoundingClientRect();
@@ -443,11 +453,11 @@ export default function TakeEditor({
     }
   }
 
-  async function persistMix(next) {
+  async function persistMix(next, { includeCrop = false } = {}) {
     setMix(next);
     if (!project?.id) return;
     try {
-      const r = await api.saveEditorMix(project.id, {
+      const body = {
         muted_takes: next.muted_takes || [],
         audio_clips: listAudioClips(next).map((c) => ({
           id: c.id,
@@ -457,7 +467,19 @@ export default function TakeEditor({
           duration_sec: c.duration_sec == null ? null : Number(c.duration_sec),
           label: c.label || null,
         })),
-      });
+      };
+      if (includeCrop) {
+        body.crop = next.crop
+          ? {
+              enabled: true,
+              x: Number(next.crop.x) || 0,
+              y: Number(next.crop.y) || 0,
+              w: Number(next.crop.w) || 1,
+              h: Number(next.crop.h) || 1,
+            }
+          : null;
+      }
+      const r = await api.saveEditorMix(project.id, body);
       if (r.editor_mix) {
         setMix(r.editor_mix);
         setProject?.({ ...project, editor_mix: r.editor_mix });
@@ -465,6 +487,24 @@ export default function TakeEditor({
     } catch (e) {
       setToast?.(String(e.message || e));
     }
+  }
+
+  function saveCrop(nextCrop) {
+    const next = { ...mixRef.current, crop: nextCrop || null };
+    void persistMix(next, { includeCrop: true });
+  }
+
+  function enableCrop() {
+    const crop = mix.crop || defaultCrop();
+    setCropEditing(true);
+    setInspectorTab("crop");
+    if (!mix.crop) saveCrop(crop);
+  }
+
+  function clearCrop() {
+    setCropEditing(false);
+    saveCrop(null);
+    setToast?.(t("editor.cropCleared"));
   }
 
   function toggleMuteTake(n) {
@@ -475,10 +515,88 @@ export default function TakeEditor({
   }
 
   function patchAudioClip(clipId, patch) {
-    const clips = listAudioClips(mix).map((c) =>
+    const base = mixRef.current;
+    const clips = listAudioClips(base).map((c) =>
       c.id === clipId ? { ...c, ...patch } : c
     );
-    persistMix({ ...mix, audio_clips: clips });
+    persistMix({ ...base, audio_clips: clips });
+  }
+
+  function openAudioMenu(e, clip) {
+    e.preventDefault();
+    e.stopPropagation();
+    setSelectedAudioId(clip.id);
+    setSelectedTake(null);
+    setAudioMenu({ clipId: clip.id, x: e.clientX, y: e.clientY });
+  }
+
+  function setClipVolumeLive(clipId, volume) {
+    const vol = clamp(Number(volume) || 0, 0, 1);
+    setMix((m) => {
+      const nextMix = {
+        ...m,
+        audio_clips: listAudioClips(m).map((c) =>
+          c.id === clipId ? { ...c, volume: vol } : c
+        ),
+      };
+      mixRef.current = nextMix;
+      return nextMix;
+    });
+    const el = audioElsRef.current.get(clipId);
+    if (el) el.volume = vol;
+  }
+
+  function beginAudioDrag(e, clip) {
+    if (e.button != null && e.button !== 0) return;
+    if (busy || audioMenu) return;
+    e.stopPropagation();
+    e.preventDefault();
+    const id = clip.id;
+    const startX = e.clientX;
+    const startOffset = Number(clip.offset_sec) || 0;
+    let moved = false;
+    let lastOffset = startOffset;
+    audioDragIdRef.current = id;
+    setDraggingAudioId(id);
+    setSelectedAudioId(id);
+    setSelectedTake(null);
+
+    const onMove = (ev) => {
+      const dx = ev.clientX - startX;
+      if (!moved && Math.abs(dx) < 4) return;
+      moved = true;
+      const next = Math.round(
+        clamp(startOffset + dx / pxPerSecRef.current, 0, totalSecRef.current) * 10
+      ) / 10;
+      lastOffset = next;
+      setMix((m) => {
+        const nextMix = {
+          ...m,
+          audio_clips: listAudioClips(m).map((c) =>
+            c.id === id ? { ...c, offset_sec: next } : c
+          ),
+        };
+        mixRef.current = nextMix;
+        return nextMix;
+      });
+    };
+
+    const onUp = () => {
+      window.removeEventListener("pointermove", onMove);
+      window.removeEventListener("pointerup", onUp);
+      window.removeEventListener("pointercancel", onUp);
+      audioDragIdRef.current = null;
+      setDraggingAudioId(null);
+      if (moved) {
+        suppressSeekRef.current = true;
+        patchAudioClip(id, { offset_sec: lastOffset });
+        syncAudioToPlayhead(playheadRef.current, !!videoRef.current && !videoRef.current.paused);
+      }
+    };
+
+    window.addEventListener("pointermove", onMove);
+    window.addEventListener("pointerup", onUp);
+    window.addEventListener("pointercancel", onUp);
   }
 
   async function onAudioFiles(fileList) {
@@ -655,7 +773,7 @@ export default function TakeEditor({
         <div className="te-stage">
           <div className="te-monitor">
             <div
-              className="te-frame te-frame-lg"
+              className={`te-frame te-frame-lg ${mix.crop || cropEditing ? "has-crop" : ""}`}
               style={{ aspectRatio: format.aspect }}
             >
               {monitorUrl ? (
@@ -686,11 +804,33 @@ export default function TakeEditor({
                   <p>{t("editor.noProgram")}</p>
                 </div>
               )}
+              {(cropEditing || mix.crop) && monitorUrl ? (
+                <CropOverlay
+                  crop={mix.crop || defaultCrop()}
+                  disabled={busy || !cropEditing}
+                  onChange={(next) => {
+                    setMix((m) => ({ ...m, crop: next }));
+                    if (cropEditing) saveCrop(next);
+                  }}
+                />
+              ) : null}
+              {mix.crop || cropEditing ? (
+                <button
+                  type="button"
+                  className="te-crop-reset"
+                  disabled={busy}
+                  onClick={clearCrop}
+                  title={t("editor.cropReset")}
+                >
+                  {t("editor.cropReset")}
+                </button>
+              ) : null}
               <div className="pp-frame-badge">
                 {activeSeg ? <span>{t("project.takeLabel", { n: activeSeg.n })}</span> : null}
                 {activeSeg && mutedSet.has(activeSeg.n) ? (
                   <span className="te-badge-mute">{t("editor.muted")}</span>
                 ) : null}
+                {mix.crop ? <span className="te-badge-crop">{t("editor.cropBadge")}</span> : null}
               </div>
             </div>
           </div>
@@ -710,6 +850,19 @@ export default function TakeEditor({
             <button
               type="button"
               role="tab"
+              aria-selected={inspectorTab === "crop"}
+              className={inspectorTab === "crop" ? "is-active" : ""}
+              onClick={() => {
+                setInspectorTab("crop");
+                if (mix.crop) setCropEditing(true);
+              }}
+            >
+              {t("editor.tabCrop")}
+              {mix.crop ? <span className="te-tab-count">on</span> : null}
+            </button>
+            <button
+              type="button"
+              role="tab"
               aria-selected={inspectorTab === "masters"}
               className={inspectorTab === "masters" ? "is-active" : ""}
               onClick={() => setInspectorTab("masters")}
@@ -720,6 +873,46 @@ export default function TakeEditor({
               ) : null}
             </button>
           </div>
+
+          {inspectorTab === "crop" ? (
+            <div className="te-inspector-pane">
+              <header className="te-inspector-head">
+                <div>
+                  <strong>{t("editor.cropTitle")}</strong>
+                </div>
+              </header>
+              <p className="muted te-versions-hint">{t("editor.cropHint")}</p>
+              <div className="te-inline-actions">
+                {!cropEditing || !mix.crop ? (
+                  <button type="button" className="primary" disabled={busy || !monitorUrl} onClick={enableCrop}>
+                    {t("editor.cropEnable")}
+                  </button>
+                ) : (
+                  <button type="button" disabled={busy} onClick={() => setCropEditing(false)}>
+                    {t("editor.cropLock")}
+                  </button>
+                )}
+                {(mix.crop || cropEditing) ? (
+                  <button type="button" className="danger" disabled={busy} onClick={clearCrop}>
+                    {t("editor.cropReset")}
+                  </button>
+                ) : null}
+              </div>
+              {mix.crop ? (
+                <div className="te-crop-readout muted">
+                  {t("editor.cropReadout", {
+                    x: Math.round(mix.crop.x * 100),
+                    y: Math.round(mix.crop.y * 100),
+                    w: Math.round(mix.crop.w * 100),
+                    h: Math.round(mix.crop.h * 100),
+                  })}
+                </div>
+              ) : (
+                <p className="muted">{t("editor.cropEmpty")}</p>
+              )}
+              <p className="muted te-versions-hint">{t("editor.cropExportHint")}</p>
+            </div>
+          ) : null}
 
           {inspectorTab === "take" ? (
             selected ? (
@@ -987,71 +1180,6 @@ export default function TakeEditor({
           </span>
         </div>
 
-        {selectedAudio ? (
-          <div className="te-audio-toolbar">
-            <strong className="te-audio-toolbar-name" title={selectedAudio.label}>
-              {selectedAudio.label || selectedAudio.id}
-            </strong>
-            <label className="te-vol">
-              <span>{t("editor.audioVolume")}</span>
-              <input
-                type="range"
-                min="0"
-                max="1"
-                step="0.05"
-                value={selectedAudio.volume ?? 0.7}
-                onChange={(e) => {
-                  const volume = Number(e.target.value);
-                  setMix((m) => ({
-                    ...m,
-                    audio_clips: listAudioClips(m).map((c) =>
-                      c.id === selectedAudio.id ? { ...c, volume } : c
-                    ),
-                  }));
-                  const el = audioElsRef.current.get(selectedAudio.id);
-                  if (el) el.volume = volume;
-                }}
-                onMouseUp={(e) =>
-                  patchAudioClip(selectedAudio.id, { volume: Number(e.target.value) })
-                }
-                onTouchEnd={(e) =>
-                  patchAudioClip(selectedAudio.id, { volume: Number(e.target.value) })
-                }
-              />
-            </label>
-            <label className="te-vol">
-              <span>{t("editor.audioOffset")}</span>
-              <input
-                type="number"
-                step="0.1"
-                value={selectedAudio.offset_sec ?? 0}
-                onChange={(e) => {
-                  const offset_sec = Number(e.target.value) || 0;
-                  setMix((m) => ({
-                    ...m,
-                    audio_clips: listAudioClips(m).map((c) =>
-                      c.id === selectedAudio.id ? { ...c, offset_sec } : c
-                    ),
-                  }));
-                }}
-                onBlur={(e) =>
-                  patchAudioClip(selectedAudio.id, {
-                    offset_sec: Number(e.target.value) || 0,
-                  })
-                }
-              />
-            </label>
-            <button
-              type="button"
-              className="danger"
-              disabled={busy}
-              onClick={() => removeAudioClip(selectedAudio.id)}
-            >
-              {t("editor.removeAudio")}
-            </button>
-          </div>
-        ) : null}
-
         <div className="te-tracks">
           <div className="te-track-labels" aria-hidden>
             <div className="te-track-label te-label-spacer" />
@@ -1146,27 +1274,42 @@ export default function TakeEditor({
                         const dur = Number(clip.duration_sec);
                         const widthSec = Number.isFinite(dur) && dur > 0 ? dur : Math.max(8, totalSec * 0.35);
                         const selectedCls = selectedAudioId === clip.id ? "is-selected" : "";
+                        const draggingCls = draggingAudioId === clip.id ? "is-dragging" : "";
+                        const offsetSec = Math.max(0, Number(clip.offset_sec) || 0);
                         return (
-                          <button
+                          <div
                             key={clip.id}
-                            type="button"
-                            className={`te-audio-block ${selectedCls}`}
+                            className={`te-audio-block ${selectedCls} ${draggingCls}`}
                             style={{
-                              transform: `translateX(${Math.max(0, (Number(clip.offset_sec) || 0) * pxPerSec)}px)`,
-                              width: Math.max(56, widthSec * pxPerSec),
+                              transform: `translateX(${offsetSec * pxPerSec}px)`,
+                              width: Math.max(72, widthSec * pxPerSec),
                             }}
-                            title={clip.label || clip.id}
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              setSelectedAudioId(clip.id);
-                              setSelectedTake(null);
-                            }}
+                            title={`${clip.label || clip.id} · ${fmtClock(offsetSec).slice(0, 5)}`}
+                            onPointerDown={(e) => beginAudioDrag(e, clip)}
+                            onContextMenu={(e) => openAudioMenu(e, clip)}
+                            onClick={(e) => e.stopPropagation()}
                           >
                             <span className="te-audio-block-label">{clip.label || clip.id}</span>
-                            <span className="muted">
+                            <span className="muted te-audio-block-vol">
                               {Math.round((Number(clip.volume) ?? 0.7) * 100)}%
                             </span>
-                          </button>
+                            <button
+                              type="button"
+                              className="te-audio-delete"
+                              title={t("editor.removeAudio")}
+                              aria-label={t("editor.removeAudio")}
+                              disabled={busy}
+                              onPointerDown={(e) => e.stopPropagation()}
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                removeAudioClip(clip.id);
+                              }}
+                            >
+                              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" aria-hidden="true">
+                                <path d="M6 6l12 12M18 6 6 18" />
+                              </svg>
+                            </button>
+                          </div>
                         );
                       })
                     ) : tr === 0 ? (
@@ -1191,6 +1334,100 @@ export default function TakeEditor({
           onLoadedMetadata={(e) => onAudioMeta(clip.id, e.currentTarget)}
         />
       ))}
+
+      {audioMenu ? (
+        <AudioVolumeMenu
+          menuRef={audioMenuRef}
+          x={audioMenu.x}
+          y={audioMenu.y}
+          clip={audioClips.find((c) => c.id === audioMenu.clipId)}
+          volumeLabel={t("editor.audioVolume")}
+          onVolume={(vol) => setClipVolumeLive(audioMenu.clipId, vol)}
+          onCommit={(vol) => {
+            patchAudioClip(audioMenu.clipId, { volume: clamp(Number(vol) || 0, 0, 1) });
+          }}
+          onClose={() => setAudioMenu(null)}
+        />
+      ) : null}
     </div>
+  );
+}
+
+function AudioVolumeMenu({ menuRef, x, y, clip, volumeLabel, onVolume, onCommit, onClose }) {
+  const [pos, setPos] = useState({ left: x, top: y });
+  const volume = Number(clip?.volume) ?? 0.7;
+
+  useLayoutEffect(() => {
+    const el = menuRef.current;
+    if (!el) return;
+    const pad = 8;
+    const rect = el.getBoundingClientRect();
+    let left = x;
+    let top = y;
+    if (left + rect.width > window.innerWidth - pad) {
+      left = Math.max(pad, window.innerWidth - rect.width - pad);
+    }
+    if (top + rect.height > window.innerHeight - pad) {
+      top = Math.max(pad, window.innerHeight - rect.height - pad);
+    }
+    setPos({ left, top });
+  }, [menuRef, x, y]);
+
+  useEffect(() => {
+    const onKey = (e) => {
+      if (e.key === "Escape") onClose?.();
+    };
+    const onDown = (e) => {
+      if (menuRef.current && !menuRef.current.contains(e.target)) onClose?.();
+    };
+    const onScroll = () => onClose?.();
+    window.addEventListener("keydown", onKey);
+    window.addEventListener("mousedown", onDown, true);
+    window.addEventListener("scroll", onScroll, true);
+    window.addEventListener("resize", onClose);
+    return () => {
+      window.removeEventListener("keydown", onKey);
+      window.removeEventListener("mousedown", onDown, true);
+      window.removeEventListener("scroll", onScroll, true);
+      window.removeEventListener("resize", onClose);
+    };
+  }, [menuRef, onClose]);
+
+  if (!clip) return null;
+
+  return createPortal(
+    <div
+      ref={menuRef}
+      className="ctx-menu te-audio-vol-menu"
+      style={{ left: pos.left, top: pos.top }}
+      role="dialog"
+      aria-label={volumeLabel}
+      onContextMenu={(e) => e.preventDefault()}
+      onMouseDown={(e) => e.stopPropagation()}
+    >
+      <div className="te-audio-vol-head">
+        <strong title={clip.label || clip.id}>{clip.label || clip.id}</strong>
+        <span className="muted">{Math.round(volume * 100)}%</span>
+      </div>
+      <label className="te-audio-vol-row">
+        <span>{volumeLabel}</span>
+        <input
+          type="range"
+          min="0"
+          max="1"
+          step="0.05"
+          value={volume}
+          onChange={(e) => onVolume(Number(e.target.value))}
+          onMouseUp={(e) => onCommit(Number(e.target.value))}
+          onTouchEnd={(e) => onCommit(Number(e.target.value))}
+          onKeyUp={(e) => {
+            if (e.key === "ArrowLeft" || e.key === "ArrowRight" || e.key === "Home" || e.key === "End") {
+              onCommit(Number(e.currentTarget.value));
+            }
+          }}
+        />
+      </label>
+    </div>,
+    document.body
   );
 }

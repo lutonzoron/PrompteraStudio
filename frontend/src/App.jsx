@@ -27,6 +27,7 @@ function readHashPage() {
   if (hash === "#/logs") return "logs";
   if (hash === "#/queue") return "queue";
   if (hash === "#/styles") return "styles";
+  if (hash === "#/create") return "create";
   if (/^#\/p\/[^/]+\/editor\/?$/.test(hash)) return "editor";
   if (hash.startsWith("#/p/")) return "studio";
   return "studio";
@@ -45,7 +46,7 @@ export default function App() {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState(null);
   const [showArchived, setShowArchived] = useState(false);
-  const [sheet, setSheet] = useState(null); // create | settings | inbox
+  const [sheet, setSheet] = useState(null); // settings | inbox
   const [page, setPage] = useState(() => readHashPage());
   const [inbox, setInbox] = useState(null);
   const esRef = useRef(null);
@@ -74,6 +75,14 @@ export default function App() {
     if (window.location.hash) {
       history.replaceState(null, "", window.location.pathname + window.location.search);
     }
+  }, []);
+
+  const openCreate = useCallback(() => {
+    setSheet(null);
+    setPage("create");
+    setSelectedId(null);
+    setProject(null);
+    window.location.hash = "#/create";
   }, []);
 
   const openStyles = useCallback(() => {
@@ -297,9 +306,9 @@ export default function App() {
       <Shell
         health={health}
         pendingReviews={pendingReviews}
-        activeNav={page === "editor" ? "studio" : page}
+        activeNav={page === "editor" || page === "create" ? "studio" : page}
         onHome={goHome}
-        onCreate={() => setSheet("create")}
+        onCreate={openCreate}
         onOpenSettings={() => setSheet("settings")}
         onOpenStyles={openStyles}
         onOpenLogs={() => {
@@ -331,6 +340,19 @@ export default function App() {
 
         {page === "logs" ? (
           <LogsPanel />
+        ) : page === "create" ? (
+          <CreateSheet
+            footageAvailable={!!health?.features?.footage}
+            styles={styles}
+            busy={busy}
+            setBusy={setBusy}
+            setToast={setToast}
+            onBack={goHome}
+            onConfirmed={async (p) => {
+              await refresh();
+              await openProject(p.id);
+            }}
+          />
         ) : page === "queue" ? (
           <div className="queue-page">
             <header className="queue-page-head">
@@ -390,7 +412,7 @@ export default function App() {
             showArchived={showArchived}
             setShowArchived={setShowArchived}
             onSelect={openProject}
-            onCreate={() => setSheet("create")}
+            onCreate={openCreate}
             onRefresh={refresh}
             onOpenQueue={openQueue}
             setToast={setToast}
@@ -406,22 +428,6 @@ export default function App() {
         setToast={setToast}
         onOpenProject={openProject}
       />
-
-      {sheet === "create" ? (
-        <CreateSheet
-          footageAvailable={!!health?.features?.footage}
-          styles={styles}
-          busy={busy}
-          setBusy={setBusy}
-          setToast={setToast}
-          onClose={() => setSheet(null)}
-          onCreated={async (p) => {
-            setSheet(null);
-            await refresh();
-            await openProject(p.id);
-          }}
-        />
-      ) : null}
 
       {sheet === "settings" ? (
         <Settings
