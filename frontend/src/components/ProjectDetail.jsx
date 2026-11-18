@@ -85,7 +85,7 @@ export default function ProjectDetail({
           <span className="nsfw-tag">NSFW</span>
           <span className="nsfw-hint">{t("project.coverHidden")}</span>
         </div>
-      ) : !posterErr ? (
+      ) : posterSrc(project) && !posterErr ? (
         <img
           className="detail-poster"
           src={posterSrc(project)}

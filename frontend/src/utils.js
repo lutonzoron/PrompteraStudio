@@ -87,9 +87,20 @@ export function isNsfw(p) {
 }
 
 export function posterSrc(p) {
-  if (!p?.id) return null;
-  if (isNsfw(p)) return null;
-  return `/api/projects/${p.id}/poster`;
+  if (!p?.id || isNsfw(p)) return null;
+  // Prefer the URL the list already verified. A missing JPEG must not become an
+  // <img> request: the 404 leaves the dark frame looking like a broken preview.
+  if (p.poster_url) return p.poster_url;
+  if (p.has_poster === true && p.poster_version) {
+    return `/api/projects/${p.id}/poster?v=${encodeURIComponent(p.poster_version)}`;
+  }
+  // Finished master, cover not built yet — one warm request. Queue rows omit
+  // the flag and must not invent a URL from updated_at.
+  if (p.has_poster === false && p.has_master) {
+    const v = p.updated_at || 0;
+    return `/api/projects/${p.id}/poster?v=${encodeURIComponent(v)}`;
+  }
+  return null;
 }
 
 export function isProjectComplete(project) {

@@ -132,12 +132,27 @@ def init_db() -> None:
                     color TEXT NOT NULL,
                     created_at REAL NOT NULL
                 );
+
+                CREATE TABLE IF NOT EXISTS films (
+                    id TEXT PRIMARY KEY,
+                    slug TEXT NOT NULL UNIQUE,
+                    title TEXT NOT NULL,
+                    notes TEXT NOT NULL DEFAULT '',
+                    scenes_json TEXT NOT NULL DEFAULT '[]',
+                    status TEXT NOT NULL DEFAULT 'draft',
+                    output_path TEXT,
+                    error TEXT,
+                    created_at REAL NOT NULL,
+                    updated_at REAL NOT NULL
+                );
+                CREATE INDEX IF NOT EXISTS idx_films_updated ON films(updated_at);
                 """
             )
             columns = {r['name'] for r in c.execute('PRAGMA table_info(projects)')}
             for name, definition in [('category', "TEXT NOT NULL DEFAULT 'general'"),
                                      ('cctv_timestamp_enabled', 'INTEGER NOT NULL DEFAULT 0'),
-                                     ('cctv_timestamp_start', 'TEXT')]:
+                                     ('cctv_timestamp_start', 'TEXT'),
+                                     ('reviewed', 'INTEGER NOT NULL DEFAULT 0')]:
                 if name not in columns:
                     c.execute(f'ALTER TABLE projects ADD COLUMN {name} {definition}')
             if not c.execute("SELECT 1 FROM settings WHERE key='migration_footage_v1'").fetchone():
@@ -385,6 +400,8 @@ def _project_row(r: sqlite3.Row | None) -> dict[str, Any] | None:
             d["stats"] = json.loads(d.get("stats_json") or "{}")
         except json.JSONDecodeError:
             d["stats"] = {}
+    d["reviewed"] = bool(d.get("reviewed"))
+    d["cctv_timestamp_enabled"] = bool(d.get("cctv_timestamp_enabled"))
     return d
 
 
@@ -425,8 +442,22 @@ def list_projects(include_archived: bool = False) -> list[dict[str, Any]]:
                 master_path = resolve_master_path(d)
                 d["has_master"] = master_path is not None
                 poster_file = PROJECTS_DIR / d["id"] / "poster.jpg"
-                d["has_poster"] = poster_file.exists()
-                d["poster_url"] = f"/api/projects/{d['id']}/poster"
+                try:
+                    has_poster = poster_file.is_file() and poster_file.stat().st_size > 0
+                    poster_ver = int(poster_file.stat().st_mtime) if has_poster else None
+                except OSError:
+                    has_poster = False
+                    poster_ver = None
+                # Keep a real JPEG on the card even when the master is newer.
+                # Blanking it made the library paint a black frame and then ask
+                # /poster to rebuild during an active render.
+                d["has_poster"] = has_poster
+                d["poster_version"] = poster_ver
+                # Only advertise a URL when the JPEG already exists — avoids N cold
+                # ffmpeg/404 hits when the library grid mounts.
+                d["poster_url"] = (
+                    f"/api/projects/{d['id']}/poster?v={poster_ver}" if has_poster and poster_ver else None
+                )
                 d["master_url"] = f"/api/projects/{d['id']}/master" if d["has_master"] else None
                 out.append(d)
             return out
@@ -513,7 +544,7 @@ def update_project(project_id: str, **fields: Any) -> dict[str, Any] | None:
     if not fields:
         return get_project(project_id)
     allowed = {
-        'category', 'cctv_timestamp_enabled', 'cctv_timestamp_start',
+        'category', 'cctv_timestamp_enabled', 'cctv_timestamp_start', 'reviewed',
         "title",
         "brief",
         "status",
@@ -538,22 +569,29 @@ def update_project(project_id: str, **fields: Any) -> dict[str, Any] | None:
     }
     cols: list[str] = []
     vals: list[Any] = []
+    touched: set[str] = set()
     for k, v in fields.items():
         if k not in allowed:
             continue
+        touched.add(k)
         if k == "takes":
             cols.append("takes_json=?")
             vals.append(json.dumps(v or [], ensure_ascii=False))
         elif k == "stats":
             cols.append("stats_json=?")
             vals.append(json.dumps(v or {}, ensure_ascii=False))
+        elif k in {"cctv_timestamp_enabled", "reviewed"}:
+            cols.append(f"{k}=?")
+            vals.append(1 if v else 0)
         else:
             cols.append(f"{k}=?")
             vals.append(v)
     if not cols:
         return get_project(project_id)
-    cols.append("updated_at=?")
-    vals.append(time.time())
+    # Marking reviewed is a timeline bookmark — don't bump library sort order.
+    if touched != {"reviewed"}:
+        cols.append("updated_at=?")
+        vals.append(time.time())
     vals.append(project_id)
     with _lock:
         c = _conn()
@@ -1048,3 +1086,123 @@ def _slugify(text: str) -> str:
     s = re.sub(r"[^\w\s-]", "", s, flags=re.UNICODE)
     s = re.sub(r"[-\s]+", "-", s).strip("-")
     return s[:60] or "video"
+
+
+def _film_row(r: sqlite3.Row | None) -> dict[str, Any] | None:
+    d = _row(r)
+    if not d:
+        return None
+    scenes = d.get("scenes")
+    if scenes is None:
+        scenes = []
+    if not isinstance(scenes, list):
+        scenes = []
+    d["scenes"] = scenes
+    return d
+
+
+def list_films() -> list[dict[str, Any]]:
+    with _lock:
+        c = _conn()
+        try:
+            rows = c.execute("SELECT * FROM films ORDER BY updated_at DESC").fetchall()
+            return [_film_row(r) for r in rows if r is not None]  # type: ignore[misc]
+        finally:
+            c.close()
+
+
+def get_film(film_id: str) -> dict[str, Any] | None:
+    with _lock:
+        c = _conn()
+        try:
+            return _film_row(c.execute("SELECT * FROM films WHERE id=?", (film_id,)).fetchone())
+        finally:
+            c.close()
+
+
+def get_film_by_slug(slug: str) -> dict[str, Any] | None:
+    with _lock:
+        c = _conn()
+        try:
+            return _film_row(c.execute("SELECT * FROM films WHERE slug=?", (slug,)).fetchone())
+        finally:
+            c.close()
+
+
+def create_film(data: dict[str, Any]) -> dict[str, Any]:
+    now = time.time()
+    film_id = str(uuid.uuid4())
+    slug = data.get("slug") or _slugify(data.get("title") or "filme")
+    base = slug
+    n = 1
+    while get_film_by_slug(slug):
+        n += 1
+        slug = f"{base}-{n}"
+    scenes = data.get("scenes") or []
+    if not isinstance(scenes, list):
+        scenes = []
+    with _lock:
+        c = _conn()
+        try:
+            c.execute(
+                """INSERT INTO films(
+                    id, slug, title, notes, scenes_json, status, output_path, error, created_at, updated_at
+                ) VALUES(?,?,?,?,?,?,?,?,?,?)""",
+                (
+                    film_id,
+                    slug,
+                    data.get("title") or "Sem título",
+                    data.get("notes") or "",
+                    json.dumps(scenes, ensure_ascii=False),
+                    data.get("status") or "draft",
+                    data.get("output_path"),
+                    data.get("error"),
+                    now,
+                    now,
+                ),
+            )
+            c.commit()
+        finally:
+            c.close()
+    return get_film(film_id)  # type: ignore[return-value]
+
+
+def update_film(film_id: str, **fields: Any) -> dict[str, Any] | None:
+    if not fields:
+        return get_film(film_id)
+    allowed = {"title", "notes", "scenes", "status", "output_path", "error", "slug"}
+    cols: list[str] = []
+    vals: list[Any] = []
+    for k, v in fields.items():
+        if k not in allowed:
+            continue
+        if k == "scenes":
+            cols.append("scenes_json=?")
+            vals.append(json.dumps(v or [], ensure_ascii=False))
+        else:
+            cols.append(f"{k}=?")
+            vals.append(v)
+    if not cols:
+        return get_film(film_id)
+    cols.append("updated_at=?")
+    vals.append(time.time())
+    vals.append(film_id)
+    with _lock:
+        c = _conn()
+        try:
+            c.execute(f"UPDATE films SET {', '.join(cols)} WHERE id=?", vals)
+            c.commit()
+        finally:
+            c.close()
+    return get_film(film_id)
+
+
+def delete_film(film_id: str) -> bool:
+    with _lock:
+        c = _conn()
+        try:
+            cur = c.execute("DELETE FROM films WHERE id=?", (film_id,))
+            c.commit()
+            return cur.rowcount > 0
+        finally:
+            c.close()

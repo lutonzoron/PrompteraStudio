@@ -11,6 +11,7 @@ from typing import Any, Awaitable, Callable
 from .. import db
 from ..comfy.client import ComfyClient
 from ..config import (
+    DATA_DIR,
     DEFAULT_DURATION,
     DEFAULT_HEIGHT,
     DEFAULT_OVERLAP,
@@ -214,11 +215,11 @@ class ContinuityRunner:
         if self.on_progress:
             await self.on_progress(msg, pct, extra)
 
-    def timeline_new(self, session: str, prompt_text: str, duration: float) -> str:
+    def timeline_new(self, session: str, prompt_text: str, duration: float, first_frame: str | None = None) -> str:
         return json.dumps(
             {
                 "version": 1,
-                "items": [],
+                "items": [{"type": "image", "slot": 0, "value": first_frame}] if first_frame else [],
                 "prompt_blocks": [],
                 "resolution": {
                     "aspect": "custom",
@@ -243,7 +244,7 @@ class ContinuityRunner:
                 },
                 "builder_state": {
                     "version": 1,
-                    "mode": "T2VA",
+                    "mode": "I2VA" if first_frame else "T2VA",
                     "prompt_mode": "simple",
                     "simple_prompt": prompt_text,
                     "duration": int(round(duration)),
@@ -315,7 +316,7 @@ class ContinuityRunner:
             "5": {
                 "class_type": "MiniMaxH3Director",
                 "inputs": {
-                    "mode": "T2VA",
+                    "mode": json.loads(timeline_data).get("builder_state", {}).get("mode", "T2VA"),
                     "prompt": director_prompt,
                     "width": self.width,
                     "height": self.height,
@@ -409,7 +410,18 @@ class ContinuityRunner:
         label = f"t{n:02d}_{kind}"
 
         if kind == "new":
-            tl = self.timeline_new(session, prompt_text, dur)
+            uploaded_frame = None
+            if take.get("first_frame"):
+                asset_root = DATA_DIR.resolve()
+                path = Path(str(take["first_frame"]))
+                path = (asset_root / path).resolve() if not path.is_absolute() else path.resolve()
+                if not path.is_relative_to(asset_root) or path.suffix.lower() not in {".png", ".jpg", ".jpeg", ".webp"}:
+                    raise RuntimeError("Quadro-base deve ser uma imagem dentro da pasta data")
+                if not path.is_file():
+                    raise RuntimeError(f"Quadro-base não encontrado: {path.name}")
+                await self._progress(f"Ancorando personagens no quadro-base de {label}…", 0.05, {"take": n})
+                uploaded_frame = await self.client.upload_scene_plate(path)
+            tl = self.timeline_new(session, prompt_text, dur, uploaded_frame)
         elif kind == "continue":
             state = db.get_runner_state(self.project['id'])
             source_id = (state.get('session_checkpoints') or {}).get(session)

@@ -1,6 +1,7 @@
 import React, { useState } from "react";
 import { api } from "../api.js";
 import { useT } from "../i18n/index.jsx";
+import MediaPlayer from "./MediaPlayer.jsx";
 
 export default function ReviewModal({ review, onDone, setToast }) {
   const t = useT();
@@ -24,7 +25,7 @@ export default function ReviewModal({ review, onDone, setToast }) {
           {t("review.minimize")}
         </button>
       </div>
-      <video key={src} src={src} controls autoPlay playsInline />
+      <MediaPlayer key={src} src={src} autoPlay playsInline />
       <div className="review-actions">
         <button type="button" onClick={() => setMode(mode === "full" ? "current" : "full")}>
           {mode === "full" ? t("review.viewCurrent") : t("review.viewFull")}

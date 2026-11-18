@@ -1,0 +1,97 @@
+{
+  "version": 2,
+  "story": "Chapeuzinho Vermelho",
+  "approved_source_project_id": "1808e496-4441-406d-ab62-9938675faa7b",
+  "format": {
+    "width": 1024,
+    "height": 576
+  },
+  "visual_reference": "Only the approved kitchen introduction and the scene plates derived from it. Do not use the rejected 270-second adaptation.",
+  "assets": {
+    "referencia_intro_aprovada.png": {
+      "sha256": "d2e98358bdeeebd89f865e8e6ed4c3d8f4036eb8333ce97b422ec2a3f0d0b569",
+      "role": "approved-original-frame"
+    },
+    "cena02_trilha_base.png": {
+      "sha256": "7b7da2353c1ed2464c02c45eb6739245088c0725c3ea7d9da588b6f6ef264c8c",
+      "role": "scene-02-i2va-plate"
+    },
+    "referencia_trilha_take08_limpa.png": {
+      "sha256": "6ae2913ee2d7902c7648dc762eeb6675a894e14a83ace967def8bf4cb3161010",
+      "role": "actual-rendered-scene-02-reference"
+    },
+    "referencia_trilha_take09.png": {
+      "sha256": "ab50b36cdf1dae7416f3db11367b88bd1968260e97d99f91a7bfeb88f79f9a6b",
+      "role": "scene-02-narrative-reference-not-an-animation-anchor"
+    },
+    "cena03_porta_vovo_base.png": {
+      "sha256": "a64139fcacaa46e499f4bbfa0c82e7867dca086d271479c416eebbf5bdb59c0b",
+      "role": "scene-03-i2va-plate"
+    },
+    "cena03_porta_vovo_base_v2.png": {
+      "sha256": "d73fb4e35302ea220a1bd2378da94c504dbd627f09cf57bde10a2715a9003a1d",
+      "role": "scene-03-corrected-i2va-plate-opaque-shutters"
+    }
+  },
+  "characters": {
+    "Red": {
+      "source": "referencia_intro_aprovada.png",
+      "scene_02": "cena02_trilha_base.png",
+      "locks": [
+        "same face, skin tone, eyes, black bob and straight fringe",
+        "same raised scarlet hood and cape, cream dress, subtle blue hem, brown boots",
+        "same age and child proportions; no chibi, anime or 3D redesign",
+        "single oval wicker basket, single loop handle, cream cloth with thin red checks, LEFT hand"
+      ],
+      "voice": "Natural Brazilian Portuguese child voice directed consistently. No technical clone of the introduction voice is supplied."
+    },
+    "Mother": {
+      "source": "referencia_intro_aprovada.png",
+      "locks": [
+        "same face, black low bun, moss-green dress and cream apron"
+      ],
+      "present_in_scene_02": false
+    },
+    "Wolf": {
+      "source": "cena02_trilha_base.png",
+      "locks": [
+        "same gray-brown fur, cream muzzle and chest, pointed ears, small eyes, black nose, long narrow snout, tail",
+        "same upright anatomy and one-and-a-half-girl height; no clothing or hat"
+      ],
+      "voice": "One stable smooth, low, polite adult Brazilian Portuguese male voice across the scene.",
+      "scene_03": "cena03_porta_vovo_base_v2.png",
+      "rendered_reference": "referencia_trilha_take08_limpa.png"
+    },
+    "Grandmother": {
+      "visible_design": null,
+      "scene_03": "off-screen voice only",
+      "voice": "One stable gentle elderly Brazilian Portuguese female voice, slightly frail from a cold. Do not reuse Mother as the visible grandmother."
+    }
+  },
+  "pipeline": {
+    "NEW": "Create a complete scene plate from the canonical character images; first_frame on NEW uses I2VA. Never start the next chapter from text alone when those characters return.",
+    "CONTINUE": "Same session and ready checkpoint, no repeated image input or sheet reinjection. Scene length follows the actual conversation; do not reset every three takes.",
+    "new_character": "Establish the first approved in-scene design once, add it to this manifest, then reuse it in all later scenes."
+  },
+  "locations": {
+    "Grandmother_cottage": {
+      "source": "cena03_porta_vovo_base_v2.png",
+      "locks": [
+        "blue-framed window LEFT",
+        "wood front door CENTER-LEFT, hinges LEFT, latch RIGHT",
+        "stone threshold, modest plaster and tile roof, warm morning light",
+        "Opaque blue wooden shutters stay closed through scene 03; no visible grandmother yet."
+      ]
+    }
+  },
+  "scenes": {
+    "03": {
+      "slug": "chapeuzinho_lobo_porta_vovo_cena_unica_v1",
+      "first_frame": "story_assets/chapeuzinho/cena03_porta_vovo_base_v2.png",
+      "seconds": 42,
+      "takes": 7,
+      "plot": "Wolf reaches Grandmother cottage, deceives her from outside, then enters. Flower-picking stays in the prior forest scene.",
+      "revision": "v2: one single tap, separate action-specific audio, off-screen voice only, door opens only in take 6."
+    }
+  }
+}

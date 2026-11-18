@@ -100,6 +100,28 @@ class ComfyClient:
     def __init__(self, base: str | None = None) -> None:
         self.base = (base or db.get_setting("comfy_base") or "http://127.0.0.1:8188").rstrip("/")
 
+    async def upload_scene_plate(self, path: Path) -> str:
+        """Upload an immutable first frame to Comfy's input folder."""
+        import hashlib
+
+        data = path.read_bytes()
+        name = f"scene_{hashlib.sha256(data).hexdigest()[:24]}{path.suffix.lower()}"
+        async with httpx.AsyncClient(timeout=120.0) as client:
+            response = await client.post(
+                f"{self.base}/upload/image",
+                files={"image": (name, data, "application/octet-stream")},
+                data={"type": "input", "subfolder": "promptera/scene_plates", "overwrite": "true"},
+            )
+            response.raise_for_status()
+            result = response.json()
+        filename = str(result.get("name") or "")
+        subfolder = str(result.get("subfolder") or "").replace("\\", "/")
+        from pathlib import PurePosixPath
+        relative = PurePosixPath(subfolder) / filename
+        if not filename or relative.is_absolute() or ".." in relative.parts or ":" in str(relative):
+            raise RuntimeError("ComfyUI retornou um caminho de imagem inválido")
+        return str(relative)
+
     async def system_stats(self) -> dict[str, Any]:
         async with httpx.AsyncClient(timeout=10.0) as client:
             r = await client.get(f"{self.base}/system_stats")

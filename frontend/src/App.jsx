@@ -3,6 +3,8 @@ import { api } from "./api.js";
 import { beep, notify } from "./utils.js";
 import Shell from "./components/Shell.jsx";
 import Library from "./components/Library.jsx";
+import Timeline from "./components/Timeline.jsx";
+import Films from "./components/Films.jsx";
 import ProjectPage from "./components/ProjectPage.jsx";
 import TakeEditor from "./components/TakeEditor.jsx";
 import CreateSheet from "./components/CreateSheet.jsx";
@@ -22,10 +24,17 @@ function readHashProjectId() {
   return m ? decodeURIComponent(m[1]) : null;
 }
 
+function readHashFilmId() {
+  const m = String(window.location.hash || "").match(/^#\/films\/([^/]+)/);
+  return m ? decodeURIComponent(m[1]) : null;
+}
+
 function readHashPage() {
   const hash = String(window.location.hash || "");
   if (hash === "#/logs") return "logs";
   if (hash === "#/queue") return "queue";
+  if (hash === "#/timeline") return "timeline";
+  if (hash === "#/films" || hash.startsWith("#/films/")) return "films";
   if (hash === "#/styles") return "styles";
   if (hash === "#/create") return "create";
   if (/^#\/p\/[^/]+\/editor\/?$/.test(hash)) return "editor";
@@ -40,6 +49,7 @@ export default function App() {
   const [projects, setProjects] = useState([]);
   const [styles, setStyles] = useState([]);
   const [selectedId, setSelectedId] = useState(() => readHashProjectId());
+  const [selectedFilmId, setSelectedFilmId] = useState(() => readHashFilmId());
   const [project, setProject] = useState(null);
   const [toast, setToast] = useState(null);
   const [review, setReview] = useState(null);
@@ -71,6 +81,7 @@ export default function App() {
     setSheet(null);
     setPage("studio");
     setSelectedId(null);
+    setSelectedFilmId(null);
     setProject(null);
     if (window.location.hash) {
       history.replaceState(null, "", window.location.pathname + window.location.search);
@@ -81,6 +92,7 @@ export default function App() {
     setSheet(null);
     setPage("create");
     setSelectedId(null);
+    setSelectedFilmId(null);
     setProject(null);
     window.location.hash = "#/create";
   }, []);
@@ -89,6 +101,7 @@ export default function App() {
     setSheet(null);
     setPage("styles");
     setSelectedId(null);
+    setSelectedFilmId(null);
     setProject(null);
     window.location.hash = "#/styles";
   }, []);
@@ -97,8 +110,30 @@ export default function App() {
     setSheet(null);
     setPage("queue");
     setSelectedId(null);
+    setSelectedFilmId(null);
     setProject(null);
     window.location.hash = "#/queue";
+  }, []);
+
+  const openTimeline = useCallback(() => {
+    setSheet(null);
+    setPage("timeline");
+    setSelectedId(null);
+    setSelectedFilmId(null);
+    setProject(null);
+    window.location.hash = "#/timeline";
+  }, []);
+
+  const openFilms = useCallback((filmId = null) => {
+    setSheet(null);
+    setPage("films");
+    setSelectedId(null);
+    setProject(null);
+    setSelectedFilmId(filmId || null);
+    const nextHash = filmId ? `#/films/${filmId}` : "#/films";
+    if (window.location.hash !== nextHash) {
+      window.location.hash = nextHash;
+    }
   }, []);
 
   const openProject = useCallback((id) => {
@@ -108,6 +143,7 @@ export default function App() {
     }
     setSheet(null);
     setPage("studio");
+    setSelectedFilmId(null);
     // Drop previous project immediately so a late fetch cannot paint the wrong video.
     setProject((prev) => (prev?.id === id ? prev : null));
     setSelectedId(id);
@@ -122,6 +158,7 @@ export default function App() {
     if (!id) return;
     setSheet(null);
     setPage("editor");
+    setSelectedFilmId(null);
     setProject((prev) => (prev?.id === id ? prev : null));
     setSelectedId(id);
     const nextHash = `#/p/${id}/editor`;
@@ -135,7 +172,7 @@ export default function App() {
       const [h, q, p, s, ib] = await Promise.all([
         api.health(),
         api.queue(),
-        api.projects(showArchived),
+        api.projects(page === "timeline" || page === "films" || showArchived),
         api.styles(),
         api.inbox().catch(() => null),
       ]);
@@ -148,7 +185,7 @@ export default function App() {
     } catch (e) {
       setError(String(e.message || e));
     }
-  }, [showArchived]);
+  }, [showArchived, page]);
   refreshRef.current = refresh;
 
   useEffect(() => {
@@ -179,8 +216,10 @@ export default function App() {
   useEffect(() => {
     const onHash = () => {
       const id = readHashProjectId();
+      const filmId = readHashFilmId();
       const nextPage = readHashPage();
       setSelectedId((prev) => (prev === id ? prev : id));
+      setSelectedFilmId((prev) => (prev === filmId ? prev : filmId));
       setPage((prev) => (prev === nextPage ? prev : nextPage));
       if (id) {
         setProject((prev) => (prev?.id === id ? prev : null));
@@ -238,7 +277,10 @@ export default function App() {
           refreshNow();
           if (data.type === "job_done") {
             setToast(tt("app.jobDone"));
-            if (data.project_id) openProjectRef.current?.(data.project_id);
+            // Stay on the new-story screen so a finished render cannot close the accept/discard modal.
+            if (data.project_id && readHashPage() !== "create") {
+              openProjectRef.current?.(data.project_id);
+            }
           }
           if (data.type === "job_failed") setToast(tt("app.jobFailed", { error: data.error }));
           if (data.type === "inbox_imported")
@@ -314,11 +356,14 @@ export default function App() {
         onOpenLogs={() => {
           setSheet(null);
           setSelectedId(null);
+          setSelectedFilmId(null);
           setProject(null);
           setPage("logs");
           window.location.hash = "#/logs";
         }}
         onOpenQueue={openQueue}
+        onOpenTimeline={openTimeline}
+        onOpenFilms={() => openFilms()}
         onOpenInbox={() => setSheet("inbox")}
         onComfyStart={() => api.comfyStart().then(refresh)}
         inboxPending={inbox?.pending_count || inbox?.pending?.length || 0}
@@ -340,6 +385,18 @@ export default function App() {
 
         {page === "logs" ? (
           <LogsPanel />
+        ) : page === "films" ? (
+          <Films
+            projects={projects}
+            busy={busy}
+            setBusy={setBusy}
+            setToast={setToast}
+            selectedFilmId={selectedFilmId}
+            onSelectFilm={(id) => openFilms(id)}
+            onBack={() => openFilms()}
+          />
+        ) : page === "timeline" ? (
+          <Timeline projects={projects} onOpenProject={openProject} onRefresh={refresh} setToast={setToast} />
         ) : page === "create" ? (
           <CreateSheet
             footageAvailable={!!health?.features?.footage}
@@ -391,6 +448,8 @@ export default function App() {
         ) : selectedId && project?.id === selectedId ? (
           <ProjectPage
             footageAvailable={!!health?.features?.footage}
+            regenerateAvailable={!!health?.features?.regenerate}
+            scriptRevisionAvailable={!!health?.features?.script_revision}
             project={project}
             setProject={setProject}
             busy={busy}
@@ -421,6 +480,7 @@ export default function App() {
       </Shell>
 
       <QueueDock
+        compact={page === "timeline"}
         prioritizeAvailable={!!health?.features?.prioritize}
         queue={queue}
         onOpenReview={setReview}

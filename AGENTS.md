@@ -14,7 +14,7 @@ When the user asks you to **write a story**, **roteiro**, **takes**, or **import
 - Spoken lines only as `<d>[Portuguese] …</d>` — sparse; most takes mute  
 - Do **not** mix Portuguese action into prompts  
 - `roteiro.md` / titles may be Portuguese for humans  
-- 1 action per take · ≤3–4 takes per session · NEW session on hard cut  
+- 1 action per take · prefer short sessions when the scene allows; never insert a hard cut every 3–4 takes · a continuous scene/dialogue may use as many takes as needed · NEW session on a real hard cut  
 - CONTINUITY LOCK + spatial map; anti sheet-leak (no studio sheet dump on continues)
 
 Do not invent a different import format. The inbox schema in `AI_STORY_INBOX.md` is the source of truth.

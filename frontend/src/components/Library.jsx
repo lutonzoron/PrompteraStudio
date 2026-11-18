@@ -167,8 +167,26 @@ function attentionWhy(p, t) {
   return statusLabel(p.status, t);
 }
 
+function RailThumb({ project }) {
+  const [err, setErr] = useState(false);
+  const src = posterSrc(project);
+  if (isNsfw(project) || !src || err) {
+    return <div className="rail-thumb nsfw">{initials(project.title)}</div>;
+  }
+  return (
+    <img
+      className="rail-thumb"
+      src={src}
+      alt=""
+      loading="lazy"
+      onError={() => setErr(true)}
+    />
+  );
+}
+
 function PosterThumb({ project, t }) {
   const [err, setErr] = useState(false);
+  const src = posterSrc(project);
   if (isNsfw(project)) {
     return (
       <div className="thumb-fallback nsfw-cover">
@@ -177,13 +195,13 @@ function PosterThumb({ project, t }) {
       </div>
     );
   }
-  if (err) {
+  if (!src || err) {
     return <div className="thumb-fallback">{initials(project.title)}</div>;
   }
   return (
     <img
       className="thumb"
-      src={posterSrc(project)}
+      src={src}
       alt=""
       loading="lazy"
       onError={() => setErr(true)}
@@ -477,19 +495,7 @@ export default function Library({
                     onClick={() => onSelect(p.id)}
                   >
                     <div className="rail-thumb-wrap">
-                      {isNsfw(p) ? (
-                        <div className="rail-thumb nsfw">{initials(p.title)}</div>
-                      ) : (
-                        <img
-                          className="rail-thumb"
-                          src={posterSrc(p)}
-                          alt=""
-                          loading="lazy"
-                          onError={(e) => {
-                            e.currentTarget.style.display = "none";
-                          }}
-                        />
-                      )}
+                      <RailThumb project={p} />
                     </div>
                     <div className="rail-copy">
                       <strong>{cleanTitle(p.title)}</strong>

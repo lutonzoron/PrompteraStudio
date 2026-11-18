@@ -564,6 +564,15 @@ async def _run_job(job: dict[str, Any]) -> None:
             stats=stats,
             review_take=None,
         )
+        try:
+            from ..config import PROJECTS_DIR
+            from ..posters import ensure_poster
+
+            # Drop then rebuild so library ?v=mtime always changes after regen.
+            (PROJECTS_DIR / project_id / "poster.jpg").unlink(missing_ok=True)
+            ensure_poster(project_id, force=True)
+        except Exception:
+            pass
         await broadcast(
             {
                 "type": "job_done",

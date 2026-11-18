@@ -2,6 +2,7 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import { api } from "../api.js";
 import { useT } from "../i18n/index.jsx";
 import { useConfirm } from "./ConfirmDialog.jsx";
+import StoryGenerateModal from "./StoryGenerateModal.jsx";
 import VideoFormat, { VIDEO_FORMATS } from "./VideoFormat.jsx";
 
 const STORAGE_KEY = "promptera.composingProjectId";
@@ -136,6 +137,11 @@ export default function CreateSheet({
   const [setupOpen, setSetupOpen] = useState(true);
   const hydratedRef = useRef(false);
   const skipNextSaveRef = useRef(true);
+  const snapshotRef = useRef(null);
+  const genTimerRef = useRef(null);
+  const genRunRef = useRef(0);
+  const genLockRef = useRef(false);
+  const [gen, setGen] = useState(null);
   const formRef = useRef(form);
   const scenesRef = useRef(scenes);
   const modeRef = useRef(mode);
@@ -330,22 +336,113 @@ export default function CreateSheet({
     }
   }
 
+  function stopGenTimer() {
+    if (genTimerRef.current) {
+      clearInterval(genTimerRef.current);
+      genTimerRef.current = null;
+    }
+  }
+
+  useEffect(() => stopGenTimer, []);
+
+  function closeGen() {
+    stopGenTimer();
+    genRunRef.current += 1;
+    genLockRef.current = false;
+    setGen(null);
+    setBusy(false);
+  }
+
   async function submitAutomatic() {
-    if (!projectId) return;
+    if (!projectId || genLockRef.current) return;
+    genLockRef.current = true;
+    const run = ++genRunRef.current;
+    const brief = formRef.current.brief || "";
+    const useDice = !brief.trim();
+    const details = useDice
+      ? [t("create.genDetailDice"), t("create.genDetail1"), t("create.genDetail2"), t("create.genDetail3")]
+      : [t("create.genDetail0"), t("create.genDetail1"), t("create.genDetail2"), t("create.genDetail3")];
     setBusy(true);
+    setGen({ phase: "working", step: 0, detail: 0, progress: 8, details, error: "", result: null });
     try {
-      await persist();
-      const result = await api.generateStory(projectId, {
-        brief: form.brief,
-        use_dice: !form.brief.trim(),
+      setSaveState("saving");
+      const saved = await api.patchProject(projectId, buildPatch());
+      if (genRunRef.current !== run) return;
+      if (saved?.slug) setSlug(saved.slug);
+      setSaveState("saved");
+      const before = await api.project(projectId);
+      if (genRunRef.current !== run) return;
+      snapshotRef.current = {
+        title: before.title,
+        brief: before.brief,
+        synopsis: before.synopsis || "",
+        roteiro_md: before.roteiro_md || "",
+        takes: before.takes || [],
+        status: "composing",
+      };
+      setGen((current) => current && { ...current, step: 1, progress: 24 });
+      const started = Date.now();
+      genTimerRef.current = setInterval(() => {
+        const elapsed = Date.now() - started;
+        const detail = Math.min(details.length - 1, Math.floor(elapsed / 2800));
+        const progress = Math.min(90, 24 + (1 - Math.exp(-elapsed / 18000)) * 66);
+        setGen((current) => (
+          current && current.phase === "working" ? { ...current, step: 1, detail, progress } : current
+        ));
+      }, 180);
+      const result = await api.generateStory(projectId, { brief, use_dice: useDice });
+      stopGenTimer();
+      if (genRunRef.current !== run) return;
+      setGen((current) => current && { ...current, step: 2, progress: 100 });
+      await new Promise((resolve) => setTimeout(resolve, 420));
+      if (genRunRef.current !== run) return;
+      setGen((current) => current && { ...current, phase: "ready", result });
+    } catch (error) {
+      stopGenTimer();
+      if (genRunRef.current !== run) return;
+      if (snapshotRef.current) {
+        try {
+          const restored = await api.patchProject(projectId, snapshotRef.current);
+          skipNextSaveRef.current = true;
+          if (restored) applyProject(restored);
+        } catch {
+          /* the error in the modal is the one that matters */
+        }
+      }
+      setGen({
+        phase: "error",
+        step: 1,
+        detail: 0,
+        progress: 0,
+        details,
+        error: String(error.message || error),
+        result: null,
       });
-      localStorage.removeItem(STORAGE_KEY);
-      setToast(t("create.readyToast"));
-      onConfirmed(result.project);
-    } catch (e) {
-      setToast(String(e.message || e));
+    }
+  }
+
+  async function acceptGenerated() {
+    const project = gen?.result?.project;
+    if (!project) return;
+    localStorage.removeItem(STORAGE_KEY);
+    closeGen();
+    setToast(t("create.readyToast"));
+    onConfirmed(project);
+  }
+
+  async function discardGenerated() {
+    setGen((current) => current && { ...current, phase: "discarding" });
+    try {
+      if (snapshotRef.current && projectId) {
+        const restored = await api.patchProject(projectId, snapshotRef.current);
+        skipNextSaveRef.current = true;
+        if (restored) applyProject(restored);
+      }
+      setToast(t("create.genDiscarded"));
+    } catch (error) {
+      setToast(String(error.message || error));
     } finally {
-      setBusy(false);
+      closeGen();
     }
   }
 
@@ -424,7 +521,6 @@ export default function CreateSheet({
     setScenes((list) =>
       list.map((s) => {
         if (s.id !== sceneId) return s;
-        if ((s.takes?.length || 0) >= 4) return s;
         return {
           ...s,
           takes: [
@@ -904,13 +1000,10 @@ export default function CreateSheet({
                             <button
                               type="button"
                               className="create-add-btn"
-                              disabled={busy || (scene.takes?.length || 0) >= 4}
+                              disabled={busy}
                               onClick={() => addTake(scene.id)}
                             >
                               {t("create.addTake")}
-                              {(scene.takes?.length || 0) >= 4 ? (
-                                <span className="muted"> · {t("create.takeLimit")}</span>
-                              ) : null}
                             </button>
                           </div>
                         ) : null}
@@ -960,6 +1053,12 @@ export default function CreateSheet({
           </footer>
         </>
       )}
+      <StoryGenerateModal
+        state={gen}
+        onAccept={acceptGenerated}
+        onDiscard={discardGenerated}
+        onCloseError={closeGen}
+      />
     </div>
   );
 }

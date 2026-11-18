@@ -82,12 +82,15 @@ function waitingStatusLine(p, comfyQ, t) {
   return statusLabel(p.status, t);
 }
 
-export default function QueueDock({ queue, onOpenReview, onRefresh, setToast, onOpenProject, prioritizeAvailable = false }) {
+export default function QueueDock({ queue, onOpenReview, onRefresh, setToast, onOpenProject, prioritizeAvailable = false, compact = false }) {
   const t = useT();
   const confirm = useConfirm();
   const pendingActions = useProjectActions();
   const busyRef = useRef(false);
   const [open, setOpen] = useState(true);
+  const [timelineOpen, setTimelineOpen] = useState(false);
+  const expanded = compact ? timelineOpen : open;
+  const toggleExpanded = () => compact ? setTimelineOpen((value) => !value) : setOpen((value) => !value);
   const [menu, setMenu] = useState(null);
   const [busy, setBusy] = useState(false);
   const [orderedWaiting, setOrderedWaiting] = useState([]);
@@ -288,16 +291,19 @@ export default function QueueDock({ queue, onOpenReview, onRefresh, setToast, on
   }
 
   return (
-    <div className={`queue-dock ${open ? "" : "collapsed"}`}>
-      <div className="queue-dock-head" onClick={() => setOpen((v) => !v)}>
+    <div className={`queue-dock ${expanded ? "" : "collapsed"}`}>
+      <div className="queue-dock-head" role="button" tabIndex={0} aria-expanded={expanded}
+        onClick={toggleExpanded} onKeyDown={(event) => {
+          if (event.key === "Enter" || event.key === " ") { event.preventDefault(); toggleExpanded(); }
+        }}>
         <div className="row">
           <strong style={{ fontSize: 13 }}>{t("queue.title")}</strong>
           {badgeCount > 0 ? <span className="badge">{badgeCount}</span> : null}
           {pending.length > 0 ? <span className="badge warn">{pending.length}</span> : null}
         </div>
-        <span className="muted">{open ? "−" : "+"}</span>
+        <span className="muted">{expanded ? "−" : "+"}</span>
       </div>
-      {open ? (
+      {expanded ? (
         <div className="queue-dock-body stack">
           <div className="row q-meta-row">
             <div className="muted" style={{ fontSize: 11 }}>

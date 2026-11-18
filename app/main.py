@@ -74,6 +74,15 @@ from .masters import (
     resolve_master_path,
 )
 from .external_sync import external_sync_loop, peek_comfy_queue, sync_all_external
+from .films import (
+    build_film,
+    create_film,
+    delete_film,
+    get_film_enriched,
+    list_films_enriched,
+    resolve_film_output,
+    update_film,
+)
 
 app = FastAPI(title="Promptera Studio", version="0.1.0")
 app.add_middleware(ActivityMiddleware)
@@ -193,6 +202,7 @@ class ProjectUpdateBody(BaseModel):
     category: Literal['general', 'footage'] | None = None
     cctv_timestamp_enabled: bool | None = None
     cctv_timestamp_start: datetime | None = None
+    reviewed: bool | None = None
     title: str | None = None
     brief: str | None = None
     style_id: str | None = None
@@ -212,9 +222,19 @@ class ProjectUpdateBody(BaseModel):
     stats: dict[str, Any] | None = None
 
 
+class StoryTakeAdd(BaseModel):
+    after: int | None = Field(default=None, ge=0, le=80)
+    note: str = Field(default="", max_length=500)
+
+
 class StoryGenerateBody(BaseModel):
     brief: str | None = None
     use_dice: bool = False
+    notes: str | None = Field(default=None, max_length=4000)
+    revise: bool = False
+    take_count: int | None = Field(default=None, ge=1, le=40)
+    drop_takes: list[int] = Field(default_factory=list, max_length=40)
+    add_takes: list[StoryTakeAdd] = Field(default_factory=list, max_length=40)
 
 
 class ReviewBody(BaseModel):
@@ -282,7 +302,9 @@ async def health() -> dict[str, Any]:
             "footage": True,
             "regenerate": True,
             "regenerate_from": True,
+            "script_revision": True,
             "take_editor": True,
+            "scene_plate_i2va": True,
         },
         "comfy": comfy,
         "machine": load_or_detect_profile(),
@@ -647,8 +669,15 @@ async def api_get_project(project_id: str) -> dict[str, Any]:
     if live and live.get("slug") != p.get("slug"):
         live = None
     p["estimate"] = estimate_project(p, now_live=live, job=active_job)
+    from .posters import poster_version as _poster_version
+
     poster = ensure_poster(project_id)
-    p["poster_url"] = f"/api/projects/{project_id}/poster" if poster else None
+    ver = _poster_version(poster)
+    p["has_poster"] = bool(poster)
+    p["poster_version"] = ver
+    p["poster_url"] = (
+        f"/api/projects/{project_id}/poster?v={ver}" if poster and ver else None
+    )
     p.update(project_master_info(project_id))
     p.update(project_preview_info(p))
     p['footage_exports'] = [dict(row, url=f"/api/projects/{project_id}/footage-exports/{row['id']}")
@@ -662,7 +691,7 @@ async def api_get_project(project_id: str) -> dict[str, Any]:
 
 
 @app.get("/api/projects/{project_id}/poster")
-def api_project_poster(project_id: str, force: bool = False):
+def api_project_poster(project_id: str, force: bool = False, v: str | None = None):
     p = db.get_project(project_id)
     if not p:
         raise HTTPException(404)
@@ -674,7 +703,17 @@ def api_project_poster(project_id: str, force: bool = False):
     poster = ensure_poster(project_id, force=force)
     if not poster:
         raise HTTPException(404, "Poster indisponível")
-    return FileResponse(poster, media_type="image/jpeg", headers={"Cache-Control": "public, max-age=60"})
+    # `v` is only a cache-bust token from the client; long TTL is safe because
+    # callers bump v when poster_version / mtime changes.
+    etag = f'"{poster.stat().st_mtime_ns}-{poster.stat().st_size}"'
+    return FileResponse(
+        poster,
+        media_type="image/jpeg",
+        headers={
+            "Cache-Control": "public, max-age=604800, immutable",
+            "ETag": etag,
+        },
+    )
 
 
 @app.post("/api/projects/{project_id}/build-master")
@@ -846,14 +885,22 @@ async def api_dice(model_pack: str = "sfw") -> dict[str, Any]:
         raise HTTPException(400, str(exc)) from exc
 
 
+_STORY_LOCKED = {"queued", "generating", "paused", "awaiting_review"}
+
+
 @app.post("/api/projects/{project_id}/generate-story")
 async def api_generate_story(project_id: str, body: StoryGenerateBody) -> dict[str, Any]:
     project = db.get_project(project_id)
     if not project:
         raise HTTPException(404)
+    if project.get("status") in _STORY_LOCKED:
+        raise HTTPException(409, "O roteiro não pode ser regenerado enquanto o vídeo está na fila ou em geração.")
     brief = body.brief if body.brief is not None else project.get("brief") or ""
     if body.use_dice or not brief.strip():
-        dice = await generate_dice_brief(model_pack=project.get("model_pack") or "sfw")
+        dice = await generate_dice_brief(
+            model_pack=project.get("model_pack") or "sfw",
+            category=project.get("category") or "general",
+        )
         brief = dice["brief"]
         db.update_project(project_id, brief=brief, title=dice.get("title") or project["title"])
         project = db.get_project(project_id)  # type: ignore[assignment]
@@ -866,10 +913,22 @@ async def api_generate_story(project_id: str, body: StoryGenerateBody) -> dict[s
             seed_base=int(project.get("seed_base") or 2000),
             model_pack=project.get("model_pack") or "sfw",
             title=project.get("title"),
+            width=int(project.get("width") or 544),
+            height=int(project.get("height") or 992),
+            category=project.get("category") or "general",
+            notes=body.notes,
+            revise=body.revise,
+            take_count=body.take_count,
+            drop_takes=body.drop_takes,
+            add_takes=[item.model_dump() for item in body.add_takes],
+            current_takes=list(project.get("takes") or []),
+            roteiro_md=project.get("roteiro_md") or "",
         )
     except Exception as exc:
         raise HTTPException(400, str(exc)) from exc
     errors = validate_takes(result["takes"], float(project["max_duration_sec"]))
+    if result.get("count_warning"):
+        errors.append(result["count_warning"])
     updated = db.update_project(
         project_id,
         title=result["title"],
@@ -1236,6 +1295,83 @@ async def api_resume() -> dict[str, Any]:
 @app.get("/api/estimate")
 def api_estimate(takes: int = 1) -> dict[str, Any]:
     return estimate_generation(takes)
+
+
+# ---------- films (independent assembly of finished masters) ----------
+
+
+class FilmCreateBody(BaseModel):
+    title: str = "Sem título"
+    notes: str = ""
+    scenes: list[dict[str, Any]] = Field(default_factory=list)
+
+
+class FilmPatchBody(BaseModel):
+    title: str | None = None
+    notes: str | None = None
+    scenes: list[dict[str, Any]] | None = None
+
+
+@app.get("/api/films")
+def api_films() -> list[dict[str, Any]]:
+    return list_films_enriched()
+
+
+@app.post("/api/films")
+def api_create_film(body: FilmCreateBody) -> dict[str, Any]:
+    return create_film(body.title, notes=body.notes, scenes=body.scenes)
+
+
+@app.get("/api/films/{film_id}")
+def api_get_film(film_id: str) -> dict[str, Any]:
+    film = get_film_enriched(film_id)
+    if not film:
+        raise HTTPException(404, "Filme não encontrado")
+    return film
+
+
+@app.patch("/api/films/{film_id}")
+def api_patch_film(film_id: str, body: FilmPatchBody) -> dict[str, Any]:
+    film = update_film(
+        film_id,
+        title=body.title,
+        notes=body.notes,
+        scenes=body.scenes,
+    )
+    if not film:
+        raise HTTPException(404, "Filme não encontrado")
+    return film
+
+
+@app.delete("/api/films/{film_id}")
+def api_delete_film(film_id: str) -> dict[str, Any]:
+    if not delete_film(film_id):
+        raise HTTPException(404, "Filme não encontrado")
+    return {"ok": True}
+
+
+@app.post("/api/films/{film_id}/build")
+def api_build_film(film_id: str) -> dict[str, Any]:
+    try:
+        return build_film(film_id)
+    except RuntimeError as exc:
+        raise HTTPException(400, str(exc)) from exc
+
+
+@app.get("/api/films/{film_id}/output")
+def api_film_output(film_id: str) -> FileResponse:
+    film = db.get_film(film_id)
+    if not film:
+        raise HTTPException(404, "Filme não encontrado")
+    path = resolve_film_output(film)
+    if not path:
+        raise HTTPException(404, "Filme ainda não montado")
+    return FileResponse(
+        path,
+        media_type="video/mp4",
+        filename=f"{film.get('slug') or film_id}_film.mp4",
+        headers={"Accept-Ranges": "bytes"},
+    )
 
 
 # ---------- inbox (Cursor → app) ----------

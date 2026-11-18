@@ -1,0 +1,43 @@
+{
+  "installed_skill": "C:\\Users\\willi\\.agents\\skills\\comfyui-h3-continuity",
+  "backup": "C:\\Projetos\\Promptera-Studio\\data\\skill_updates\\backups\\comfyui-h3-continuity_540b6c2f7a49",
+  "files": [
+    {
+      "name": "character-identity.md",
+      "previous_sha256": "fff1ba132be2a928b2cfd4f84f4d6c32230876a5e457b41caba843d9c650ab2f",
+      "installed_sha256": "050cde19179ecf5c2a14921de838ecfafd7cc0300a9608b6cdc8936561876a1c"
+    },
+    {
+      "name": "deliverables.md",
+      "previous_sha256": "e7e89270f2415eed62226a8b8da0781cb9a6e60c4f7b564cefc2ca05156e0a2c",
+      "installed_sha256": "dabc3ac1b201bd7551912ea1a30610eb1babfc7456abe4acc65cfb927ab9b0bf"
+    },
+    {
+      "name": "examples.md",
+      "previous_sha256": "5dc4b6e3e50575a92157d2de8f119dc13a527ced95ec62d5cdd8d4e64ae4b0a7",
+      "installed_sha256": "1d6d2913d3226ecf44bdb8aaf924850cc11a09e93d3b3c5c5fe3a0da943151d0"
+    },
+    {
+      "name": "footage-direction.md",
+      "previous_sha256": null,
+      "installed_sha256": "59870ff9ed0cc340bea858bb070271f4378f9c20f878d9771a85986317ca0c42"
+    },
+    {
+      "name": "promptera-inbox.md",
+      "previous_sha256": null,
+      "installed_sha256": "916aaca2e7a33e6d69155c5db0e5c44366dbcd2c6ca202bab17b2b369d6a925e"
+    },
+    {
+      "name": "SKILL.md",
+      "previous_sha256": "15eaa428153f2a27dd13f890766a07994ced4945ae4f3049cbe7bb1e0299e52f",
+      "installed_sha256": "0a669f162c10fb17194241e1ecc571371c16b3f4ec60000bfb2dfec01ec9c7b7"
+    },
+    {
+      "name": "take-validation.md",
+      "previous_sha256": "2c0cb67c0a9cfe21bbd80900516e8d9d8a7a8c6f972a32d97292517121450d9b",
+      "installed_sha256": "7e50cd4a93c841586a0ea423135aafc1d6a41d2c3a74371d9dd88f7d44c31a91"
+    }
+  ],
+  "links_verified": true,
+  "runtime_untouched": true
+}

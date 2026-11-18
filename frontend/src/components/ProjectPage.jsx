@@ -16,7 +16,9 @@ import { useLocale, useT } from "../i18n/index.jsx";
 import VideoFormat, { VIDEO_FORMATS } from "./VideoFormat.jsx";
 import LogsPanel from "./LogsPanel.jsx";
 import FootagePanel from "./FootagePanel.jsx";
+import MediaPlayer from "./MediaPlayer.jsx";
 import { runProjectAction, useProjectActions } from "../projectActions.js";
+import RegenScriptModal from "./RegenScriptModal.jsx";
 
 function reviewLabel(mode, t) {
   return mode === "com_revisao" ? t("project.modeReviewLong") : t("project.reviewModeShort");
@@ -39,6 +41,8 @@ const TABS = ["takes", "overview", "production", "cctv", "logs"];
 
 export default function ProjectPage({
   footageAvailable = false,
+  regenerateAvailable = false,
+  scriptRevisionAvailable = false,
   project,
   setProject,
   busy,
@@ -58,6 +62,7 @@ export default function ProjectPage({
   const [editingTitle, setEditingTitle] = useState(false);
   const [titleDraft, setTitleDraft] = useState("");
   const [tab, setTab] = useState("takes");
+  const [scriptOpen, setScriptOpen] = useState(false);
 
   useEffect(() => {
     setMasterOk(!!project?.has_master);
@@ -70,6 +75,7 @@ export default function ProjectPage({
     setEditingTitle(false);
     setTitleDraft(cleanTitle(project?.title || ""));
     setTab("takes");
+    setScriptOpen(false);
     const id = project?.id;
     if (!id) return undefined;
     let cancelled = false;
@@ -154,19 +160,58 @@ export default function ProjectPage({
     );
   }
 
-  async function regen() {
-    setBusy(true);
-    try {
-      const r = await api.generateStory(project.id, { brief: project.brief });
-      setProject(r.project);
-      setEstimate(r.estimate);
-      setToast(t("project.scriptRegenerated"));
-      onRefresh();
-    } catch (e) {
-      setToast(String(e.message || e));
-    } finally {
-      setBusy(false);
-    }
+  const scriptLocked = ["queued", "generating", "paused", "awaiting_review"].includes(project?.status);
+  const videoLocked =
+    !regenerateAvailable || project?.status !== "done" || !(project?.takes || []).length;
+  const videoTitle = !regenerateAvailable
+    ? t("library.regenerateNeedsRestart")
+    : project?.status !== "done"
+      ? t("project.regenVideoNeedDone")
+      : !(project?.takes || []).length
+        ? t("project.noTakes")
+        : undefined;
+
+  async function submitScriptRegen(body) {
+    if (!project || scriptLocked) return;
+    await runProjectAction(project.id, t("project.regenScript"), async () => {
+      setBusy(true);
+      try {
+        const r = await api.generateStory(project.id, { brief: project.brief, ...body });
+        setProject(r.project);
+        setEstimate(r.estimate);
+        setScriptOpen(false);
+        const countNote = (r.warnings || []).find((line) => String(line).startsWith("O modelo"));
+        setToast(countNote ? `${t("project.scriptRegenerated")} ${countNote}` : t("project.scriptRegenerated"));
+        onRefresh();
+      } catch (e) {
+        setToast(String(e.message || e));
+      } finally {
+        setBusy(false);
+      }
+    });
+  }
+
+  async function regenVideo() {
+    if (!project || videoLocked) return;
+    const ok = await confirm({
+      title: t("library.regenerateTitle"),
+      message: t("library.regenerateWarning", { title: cleanTitle(project.title) }),
+      confirmLabel: t("library.regenerateConfirm"),
+      danger: true,
+    });
+    if (!ok) return;
+    await runProjectAction(project.id, t("project.regenVideo"), async () => {
+      setBusy(true);
+      try {
+        await api.regenerateVideo(project.id);
+        setToast(t("library.regenerateQueued"));
+        await onRefresh();
+      } catch (e) {
+        setToast(String(e.message || e));
+      } finally {
+        setBusy(false);
+      }
+    });
   }
 
   async function setReviewMode(mode) {
@@ -270,11 +315,10 @@ export default function ProjectPage({
               }}
             >
               {playbackUrl ? (
-                <video
-                  className="pp-video"
+                <MediaPlayer
                   key={`${project.id}:${playbackUrl}`}
+                  videoClassName="pp-video"
                   src={playbackUrl}
-                  controls
                   playsInline
                   poster={nsfw ? undefined : posterSrc(project) || undefined}
                   onError={() => {
@@ -838,8 +882,21 @@ export default function ProjectPage({
                       {isDone ? <div className="alert good">{t("project.flowDone")}</div> : null}
                     </div>
                     <div className="pp-side-actions">
-                      <button type="button" disabled={busy} onClick={regen}>
+                      <button
+                        type="button"
+                        disabled={busy || pendingActions.has(project.id) || scriptLocked}
+                        title={scriptLocked ? t("project.regenScriptBusy") : undefined}
+                        onClick={() => setScriptOpen(true)}
+                      >
                         {t("project.regenScript")}
+                      </button>
+                      <button
+                        type="button"
+                        disabled={busy || pendingActions.has(project.id) || videoLocked}
+                        title={videoTitle}
+                        onClick={regenVideo}
+                      >
+                        {t("project.regenVideo")}
                       </button>
                       {project.status === "archived" ? (
                         <button
@@ -892,6 +949,16 @@ export default function ProjectPage({
           </div>
         </div>
       </div>
+      <RegenScriptModal
+        open={scriptOpen}
+        project={project}
+        revisionAvailable={scriptRevisionAvailable}
+        busy={busy || pendingActions.has(project.id)}
+        onClose={() => {
+          if (!busy) setScriptOpen(false);
+        }}
+        onSubmit={submitScriptRegen}
+      />
     </div>
   );
 }

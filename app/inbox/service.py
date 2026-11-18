@@ -96,6 +96,8 @@ def _normalize_imported_takes(takes: list[dict[str, Any]], slug: str) -> list[di
                 "title": t.get("title") or f"Take {n}",
             }
         )
+        if t.get("first_frame"):
+            out[-1]["first_frame"] = str(t["first_frame"]).strip()
     return out
 
 

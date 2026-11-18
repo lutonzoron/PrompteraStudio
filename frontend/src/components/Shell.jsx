@@ -12,6 +12,8 @@ export default function Shell({
   onOpenSettings,
   onOpenStyles,
   onOpenLogs,
+  onOpenTimeline,
+  onOpenFilms,
   onOpenQueue,
   onOpenInbox,
   onComfyStart,
@@ -39,6 +41,12 @@ export default function Shell({
           <button type="button" className={activeNav === "queue" ? "active" : ""} onClick={onOpenQueue}>
             {t("nav.queue")}
             {queueCount > 0 ? <span className="badge">{queueCount}</span> : null}
+          </button>
+          <button type="button" className={activeNav === "timeline" ? "active" : ""} onClick={onOpenTimeline}>
+            {t("timeline.title")}
+          </button>
+          <button type="button" className={activeNav === "films" ? "active" : ""} onClick={onOpenFilms}>
+            {t("nav.films")}
           </button>
           <button
             type="button"

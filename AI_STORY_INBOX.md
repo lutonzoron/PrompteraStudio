@@ -142,7 +142,7 @@ Each take:
 2. First take of a block: `"kind": "new"`  
 3. Following takes: `"kind": "continue"` + **same** `session`  
 4. **Hard cut / new scene / camera reset** → NEW take + **new session name**  
-5. Keep Continuity blocks **short**: **≤ 3–4 takes** per session unless overnight (Full timeline slows as it grows)  
+5. Prefer **short** Continuity blocks when the scene allows (3–4 takes is a performance guideline, not a scene limit). A continuous conversation/scene may use as many takes as needed. **Never insert a hard cut every third take** merely to meet a count; the Full timeline gets slower as it grows, but preserve the requested scene continuity.  
 6. **1 action per take** — do not stack pose changes; match the beat to the take length  
 7. Prompt timestamps must match duration (`00:00.000–00:03.000` on a 3 s take)
 
@@ -229,6 +229,8 @@ These rules matter more than fancy prose. **Match the skill exactly.**
 
 **Sparse speech:** few `<d>[Portuguese] …</d>` lines; most takes = ambience + breath/motion only. Mute takes: say `No dialogue` / `No speech` and omit `<d>` tags.
 
+For narrative conversations, include the exchanges needed to tell the requested story; do not turn a dialogue-driven chapter into mostly silent gestures. Keep each line short enough for its take. For Strange Footages, the established default remains ambience only.
+
 ### 5.2 Continuity / duration / audio
 
 1. **One action per take** — single beat, no montage inside one take  
@@ -238,7 +240,19 @@ These rules matter more than fancy prose. **Match the skill exactly.**
 5. **Audio** — say speech vs SFX-only vs silence; avoid unwanted dialogue tags if mute  
 6. **Dimensions:** use the user's confirmed `width`/`height`, never an assumed default. Other defaults: 24 fps, euler, 8 steps, overlap **22**, `output_mode: full`
 
+Use **take-specific audio**, not a shared sound list for an entire scene. Repeating knocks/footsteps/hinges in every silent take can repeat those actions visually too. Carry the final pose and prop state forward: for a door exchange, one tap then lowered hand/paw, offscreen reply with the door closed, invitation, latch/open once, then enter through the already open door. A character heard from inside must not appear at a window; keep the plate's window opaque/closed when the character design should remain unseen.
+
 ### 5.3 Character identity (anti sheet-leak)
+
+**Scene plate supported by the runner:** a NEW take may include optional
+`"first_frame": "story_assets/my_story/scene_01.png"`. The path is relative to
+`data/` (or an absolute image path inside `data/`). The image must exist as PNG,
+JPEG or WebP. The importer preserves this field; the runner uploads the plate to
+ComfyUI input and starts that NEW in **I2VA**, using image slot 0. The plate must
+already show the characters in their actual scene and the confirmed framing.
+Never use a multipanel character sheet as the starting frame. CONTINUE takes must
+omit `first_frame`: they use the latest ready checkpoint, with no image reinjection.
+Ordinary NEW takes without this optional field retain the existing T2VA behavior.
 
 Treat studio character sheets as a known failure mode (sheet paste / void / identity swap).
 
@@ -331,6 +345,8 @@ Continuity **Full** means each take file already contains 1…N. The app master 
 4. Render queue shows progress; master lands in `data/deliverables/<slug>/master.mp4`
 
 UI: Inbox badge shows pending count; per-pack **Aprovar** / **Rejeitar**.
+
+When the user explicitly requested approval and enqueueing, the agent should perform those actions for the intended packs and verify one active job per project, rather than delegating the already authorized steps back to the user. Do not approve unrelated Inbox items. Preserve active generations; content import does not authorize interruption or priority preemption. A successfully validated/queued pack is not yet a visually verified render.
 
 ---
 

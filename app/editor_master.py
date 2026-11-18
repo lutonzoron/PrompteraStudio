@@ -182,12 +182,17 @@ def _save_versions(project_id: str, versions: list[dict[str, Any]], *, master_pa
         stats["master_built_at"] = time.time()
         stats["master_kind"] = "editor_mix"
     updated = db.update_project(project_id, stats=stats)
-    # drop stale poster
-    poster = PROJECTS_DIR / project_id / "poster.jpg"
+    # Refresh poster now so the library does not pay ffmpeg on first paint
     try:
-        poster.unlink(missing_ok=True)
-    except OSError:
-        pass
+        from .posters import ensure_poster
+
+        ensure_poster(project_id, force=True)
+    except Exception:
+        poster = PROJECTS_DIR / project_id / "poster.jpg"
+        try:
+            poster.unlink(missing_ok=True)
+        except OSError:
+            pass
     return updated or project
 
 

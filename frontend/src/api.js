@@ -151,4 +151,14 @@ export const api = {
 
   mediaUrl: (absPath) => `/api/media?path=${encodeURIComponent(absPath)}`,
   posterUrl: (id) => `/api/projects/${id}/poster`,
+
+  films: () => req("/api/films"),
+  film: (id) => req(`/api/films/${id}`),
+  createFilm: (body) => req("/api/films", { method: "POST", body: JSON.stringify(body) }),
+  patchFilm: (id, body) =>
+    req(`/api/films/${id}`, { method: "PATCH", body: JSON.stringify(body) }),
+  deleteFilm: (id) => req(`/api/films/${id}`, { method: "DELETE" }),
+  buildFilm: (id) => req(`/api/films/${id}/build`, { method: "POST" }),
+  filmOutputUrl: (id, v) =>
+    `/api/films/${id}/output${v ? `?v=${encodeURIComponent(v)}` : ""}`,
 };

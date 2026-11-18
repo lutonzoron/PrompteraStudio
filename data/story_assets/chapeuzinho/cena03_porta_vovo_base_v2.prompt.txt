@@ -1,0 +1,6 @@
+Tool: built-in image_gen.imagegen, precise-object-edit.
+Source: cena03_porta_vovo_base.png
+Output: cena03_porta_vovo_base_v2.png
+
+Final prompt:
+Use case: precise-object-edit. Edit the supplied scene plate with ONE small change only: replace the transparent blue-framed window at far LEFT with CLOSED OPAQUE weathered BLUE WOODEN SHUTTERS, fully covering the same window opening. Keep the blue frame and sill at exactly the same position and dimensions. There must be no glass view, gaps, face, person, shadow, curtain or visible room through that window. These shutters remain shut in the entire forthcoming scene. Keep absolutely everything else unchanged: the exact wolf's face, eye, long snout, gray-brown fur, cream muzzle and chest, upright pose, forepaws hanging quietly at his torso, feet, tail, size, position on RIGHT, original character drawing; the CLOSED wooden front door CENTER-LEFT with its hinges and latch, threshold, cottage wall, roof, flowers, forest, path, camera, framing and warm morning light. Preserve the same vintage hand-inked Disney/Snow White-1937-like traditional 2D animation style and painted textures. Do not change the door, do not open it, do not lift the wolf's paw, do not add a new person, no girl, no grandmother, no redesign, no text, no collage. Landscape 16:9 first-frame scene plate for the same 1024x576 animation.

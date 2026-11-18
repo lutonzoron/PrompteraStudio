@@ -15,6 +15,7 @@ SETTINGS_PATH = DATA_DIR / "settings.json"
 MACHINE_PROFILE_PATH = DATA_DIR / "machine_profile.json"
 DELIVERABLES_DIR = DATA_DIR / "deliverables"
 PROJECTS_DIR = DATA_DIR / "projects"
+FILMS_DIR = DATA_DIR / "films"
 
 HOST = os.environ.get("PROMPTERA_HOST", "127.0.0.1")
 PORT = int(os.environ.get("PROMPTERA_PORT", "8790"))
@@ -93,5 +94,5 @@ COMFYUI_REPO = "https://github.com/comfyanonymous/ComfyUI.git"
 
 
 def ensure_dirs() -> None:
-    for p in (DATA_DIR, DELIVERABLES_DIR, PROJECTS_DIR, STYLE_BASES_DIR):
+    for p in (DATA_DIR, DELIVERABLES_DIR, PROJECTS_DIR, FILMS_DIR, STYLE_BASES_DIR):
         p.mkdir(parents=True, exist_ok=True)

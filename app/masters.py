@@ -353,13 +353,18 @@ def build_master(project_id: str, *, force: bool = False) -> dict[str, Any]:
     stats["master_mode"] = mode
     db.update_project(project_id, stats=stats)
 
-    # drop stale poster so a fresh frame can be pulled later (SFW only)
-    poster = PROJECTS_DIR / project_id / "poster.jpg"
-    if poster.exists():
-        try:
-            poster.unlink()
-        except OSError:
-            pass
+    # Refresh poster off the library critical path (SFW only; NSFW returns None)
+    try:
+        from .posters import ensure_poster
+
+        ensure_poster(project_id, force=True)
+    except Exception:
+        poster = PROJECTS_DIR / project_id / "poster.jpg"
+        if poster.exists():
+            try:
+                poster.unlink()
+            except OSError:
+                pass
 
     return {
         "has_master": True,
